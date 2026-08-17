@@ -37,6 +37,10 @@ Add runtime dependencies to `[project].dependencies` and test-only dependencies 
 
 Add a focused package under `app/modules/`. Keep domain behavior inside its module, keep routes thin, and make cross-domain dependencies explicit. Do not create a service per domain or AI agent.
 
+## Project authorization development
+
+Every project-scoped endpoint must perform object-level authorization after authentication. Authorization must fail closed, and only `project_members.status = active` grants member privileges. Run project authorization tests with `python -m pytest tests/test_authorization.py`. Any permission behavior change requires focused tests, including IDOR and revoked-membership coverage.
+
 ## Database changes
 
 Business schema changes MUST be introduced through Alembic migrations. Do not manually modify a shared or production database schema.

@@ -17,6 +17,8 @@ RegBridge V1 is a modular monolith: one deployable FastAPI backend with internal
 
 Implemented in SCRUM-176: application bootstrap, configuration, database connectivity, health endpoint, and module boundaries. Implemented in SCRUM-177: the V2.1 identity, project, membership, and audit foundation models and Alembic migration. Implemented in SCRUM-178: provider-neutral JWT/OIDC validation, business identity mapping, database-controlled global roles, authenticated-principal contracts, and the protected `/me` route. Project-level authorization, document authorization, sharing grants, and admin role management remain planned.
 
+SCRUM-179 implements the project service/repository foundation, project membership lifecycle, project-level authorization, member-role authorization, project visibility enforcement, and audit of membership/security changes. Document-level authorization, investor sharing, and fine-grained compliance sharing remain planned.
+
 ## Dependency direction
 
 - API routes call application/domain services.

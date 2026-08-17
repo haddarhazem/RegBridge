@@ -34,6 +34,14 @@ RegBridge.
 - project/object authorization belongs to explicit later authorization logic;
 - do not add authentication bypasses;
 - inspect `docs/AUTHENTICATION.md` before modifying identity/authentication.
+- never treat resource-ID knowledge as authorization;
+- all project-scoped operations require object-level authorization;
+- only active `project_members` grant member privileges;
+- invited/revoked memberships do not grant access;
+- never bypass project authorization in future AI/agent code;
+- do not expose ORM entities directly as unrestricted API responses;
+- audit membership and permission changes;
+- do not implement `project_access_grants` until its investor dependency is deliberately introduced.
 
 ## Data/AI boundary
 
