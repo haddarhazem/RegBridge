@@ -1,0 +1,34 @@
+# Architecture
+
+## Architectural style
+
+RegBridge V1 is a modular monolith: one deployable FastAPI backend with internally isolated domains. This keeps development, testing, local setup, and transactions simple for the current team. A domain may be extracted later if operational evidence justifies it; AI agents are logical capabilities, not automatically separate services.
+
+## Backend modules
+
+- `identity`: identity and authentication-related domain (planned)
+- `projects`: entrepreneur/startup project lifecycle (planned)
+- `documents`: file metadata, version, and access infrastructure (planned)
+- `regulatory`: regulatory guidance and assessments (planned)
+- `compliance`: controls, evidence, and scoring (planned)
+- `investment`: investors, opportunities, and matching (planned)
+- `research`: research discovery, approved abstracts, and collaboration (planned)
+- `ai`: model orchestration, agent contracts, and verification infrastructure (planned)
+
+Implemented in SCRUM-176: application bootstrap, configuration, database connectivity, health endpoint, and module boundaries. Implemented in SCRUM-177: the V2.1 identity, project, membership, and audit foundation models and Alembic migration. Implemented in SCRUM-178: provider-neutral JWT/OIDC validation, business identity mapping, database-controlled global roles, authenticated-principal contracts, and the protected `/me` route. Project-level authorization, document authorization, sharing grants, and admin role management remain planned.
+
+## Dependency direction
+
+- API routes call application/domain services.
+- Business modules do not import HTTP concerns.
+- Database access remains behind infrastructure/repository layers.
+- Future AI agents receive explicit validated model input, not raw SQLAlchemy entities.
+- Cross-domain imports are deliberate rather than arbitrary.
+
+## Infrastructure
+
+Implemented: FastAPI, PostgreSQL 15 for local development, and SQLAlchemy async with asyncpg. Qdrant and object storage are future infrastructure, not implemented here.
+
+## Security baseline
+
+Configuration is environment-based. Local environment files are ignored and no credentials are committed. Connection details are never returned by the health endpoint or logged.

@@ -1,0 +1,1 @@
+"""RegBridge application package."""
