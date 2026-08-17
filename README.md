@@ -71,3 +71,7 @@ RegBridge V1 is a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 ## Development guide
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workflow and engineering rules.
+
+## Continuous integration
+
+GitHub Actions runs clean PostgreSQL migrations, the full test suite, and security regressions on pushes to `main` and pull requests. See [docs/CI.md](docs/CI.md).

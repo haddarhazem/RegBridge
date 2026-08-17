@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql+asyncpg://regbridge_ci:regbridge_ci@localhost:5432/regbridge_ci
+      ENVIRONMENT: test
+      APP_NAME: RegBridge CI
+      OIDC_ISSUER: https://issuer.example.test/
+      OIDC_AUDIENCE: https://api.example.test/
+      DOCUMENT_MAX_UPLOAD_BYTES: 26214400
+      OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+      OBJECT_STORAGE_BUCKET: regbridge-ci-documents
+      OBJECT_STORAGE_ACCESS_KEY: ci-access-key
+      OBJECT_STORAGE_SECRET_KEY: ci-secret-key
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_SECURE: "false"
+      CLAMAV_HOST: localhost
+      CLAMAV_PORT: "3310"
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: regbridge_ci
+          POSTGRES_USER: regbridge_ci
+          POSTGRES_PASSWORD: regbridge_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U regbridge_ci -d regbridge_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Apply clean database migrations
+        run: alembic upgrade head
+
+      - name: Verify migration head
+        shell: bash
+        run: |
+          alembic current
+          alembic current | grep -q "scrum180_documents"
+
+      - name: Run full test suite
+        run: python -m pytest -q
+
+      - name: Run security regression suite
+        run: python -m pytest -q tests/test_security_regressions.py

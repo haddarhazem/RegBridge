@@ -45,6 +45,20 @@ Every project-scoped endpoint must perform object-level authorization after auth
 
 Start local document infrastructure with `docker compose up -d postgres minio minio-init clamav`. Configure the `OBJECT_STORAGE_*`, `CLAMAV_*`, and `DOCUMENT_MAX_UPLOAD_BYTES` variables from `.env.example`. Run document tests with `python -m pytest tests/test_documents.py`. Never manually edit document versions, place binaries in PostgreSQL, expose storage keys, or allow analyses to omit the exact `document_version_id`.
 
+## Before committing
+
+1. Run relevant tests.
+2. Run migrations if the schema changed.
+3. Run the full test suite before completing the ticket.
+
+## CI
+
+GitHub Actions runs on pushes to `main` and pull requests targeting `main`. It installs dependencies, applies `alembic upgrade head` to a disposable PostgreSQL 15 database, verifies the Alembic head, runs `python -m pytest -q`, and runs the explicit security regression suite. Any migration, test, or security failure blocks the job. See [CI.md](CI.md).
+
+## Security regressions
+
+Project- and document-authorization changes require negative tests as well as successful-access tests. IDOR, revoked-membership, authentication rejection, and quarantined-document behavior must remain covered.
+
 ## Database changes
 
 Business schema changes MUST be introduced through Alembic migrations. Do not manually modify a shared or production database schema.

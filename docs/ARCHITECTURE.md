@@ -19,6 +19,8 @@ Implemented in SCRUM-176: application bootstrap, configuration, database connect
 
 SCRUM-179 implements the project service/repository foundation, project membership lifecycle, project-level authorization, member-role authorization, project visibility enforcement, and audit of membership/security changes. SCRUM-180 implements document metadata, immutable versions, processing-job persistence, object-storage abstraction, secure upload validation, checksums, document authorization, malware scanning gates, and soft deletion. Full extraction workers, OCR, embeddings, explicit sharing grants, and retention automation remain planned.
 
+SCRUM-181 implements the automated CI baseline, clean-database migration gate, access-control regression suite, and audit verification baseline. Production deployment, monitoring, advanced security scanning, and AI observability remain planned.
+
 ## Dependency direction
 
 - API routes call application/domain services.

@@ -50,6 +50,15 @@ RegBridge.
 - reuse project authorization and do not expose storage keys or credentials;
 - new document/AI analyses must reference an exact `document_version_id`;
 - `shared` visibility fails closed until explicit grants exist.
+- every database change must pass `alembic upgrade head` from a clean database;
+- critical migrations and tests must fail CI when they fail;
+- never use production data or services in CI/tests;
+- every object-level authorization feature needs positive and negative tests;
+- knowing project/document/version IDs is never authorization;
+- revoked membership must be tested to fail immediately;
+- sensitive permission and document actions require audit verification;
+- never disable security tests to make CI green;
+- do not make production services required for automated tests.
 
 ## Data/AI boundary
 
