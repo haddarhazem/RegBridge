@@ -9,7 +9,7 @@
 
 ## Foundation tables
 
-The authoritative source is `docs/specs/RegBridge_DATABASE_SCHEMA_V2.1_RESEARCH.md`. This ticket implements only the explicitly approved subset below.
+The authoritative source is `docs/specs/RegBridge_DATABASE_SCHEMA_V2.1_RESEARCH.md`. The implemented schema includes the SCRUM-177 foundation and the SCRUM-180 document subset below.
 
 SCRUM-177 implements only the V2.1 foundation subset:
 
@@ -24,6 +24,14 @@ SCRUM-177 implements only the V2.1 foundation subset:
 Essential foreign keys, check constraints, uniqueness rules, and indexes are defined in the Alembic revision. Global role seed data is intentionally separate from schema migration and is not included in SCRUM-177.
 
 `user_consents` is deferred. `project_access_grants` is also deferred because V2.1 references `investor_profiles`, which belongs to a later investment increment. No investment-domain tables are included here.
+
+SCRUM-180 adds:
+
+- `documents`: logical document metadata, classification, visibility, status, and current version.
+- `document_versions`: immutable object-storage references, validated MIME, size, checksum, uploader, and scan status.
+- `document_processing_jobs`: idempotent references to exact immutable versions.
+
+Document binaries remain outside PostgreSQL in private object storage. See [docs/DOCUMENTS.md](DOCUMENTS.md).
 
 ## Migration policy
 

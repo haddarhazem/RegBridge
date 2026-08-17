@@ -41,6 +41,10 @@ Add a focused package under `app/modules/`. Keep domain behavior inside its modu
 
 Every project-scoped endpoint must perform object-level authorization after authentication. Authorization must fail closed, and only `project_members.status = active` grants member privileges. Run project authorization tests with `python -m pytest tests/test_authorization.py`. Any permission behavior change requires focused tests, including IDOR and revoked-membership coverage.
 
+## Document development
+
+Start local document infrastructure with `docker compose up -d postgres minio minio-init clamav`. Configure the `OBJECT_STORAGE_*`, `CLAMAV_*`, and `DOCUMENT_MAX_UPLOAD_BYTES` variables from `.env.example`. Run document tests with `python -m pytest tests/test_documents.py`. Never manually edit document versions, place binaries in PostgreSQL, expose storage keys, or allow analyses to omit the exact `document_version_id`.
+
 ## Database changes
 
 Business schema changes MUST be introduced through Alembic migrations. Do not manually modify a shared or production database schema.

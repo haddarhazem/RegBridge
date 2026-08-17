@@ -42,6 +42,14 @@ RegBridge.
 - do not expose ORM entities directly as unrestricted API responses;
 - audit membership and permission changes;
 - do not implement `project_access_grants` until its investor dependency is deliberately introduced.
+- files live in object storage, not PostgreSQL;
+- document versions are immutable and must never be overwritten;
+- calculate SHA-256 server-side and validate real file content;
+- never use unscanned or quarantined documents in AI workflows;
+- never authorize from document UUID knowledge alone;
+- reuse project authorization and do not expose storage keys or credentials;
+- new document/AI analyses must reference an exact `document_version_id`;
+- `shared` visibility fails closed until explicit grants exist.
 
 ## Data/AI boundary
 

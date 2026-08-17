@@ -17,7 +17,7 @@ RegBridge V1 is a modular monolith: one deployable FastAPI backend with internal
 
 Implemented in SCRUM-176: application bootstrap, configuration, database connectivity, health endpoint, and module boundaries. Implemented in SCRUM-177: the V2.1 identity, project, membership, and audit foundation models and Alembic migration. Implemented in SCRUM-178: provider-neutral JWT/OIDC validation, business identity mapping, database-controlled global roles, authenticated-principal contracts, and the protected `/me` route. Project-level authorization, document authorization, sharing grants, and admin role management remain planned.
 
-SCRUM-179 implements the project service/repository foundation, project membership lifecycle, project-level authorization, member-role authorization, project visibility enforcement, and audit of membership/security changes. Document-level authorization, investor sharing, and fine-grained compliance sharing remain planned.
+SCRUM-179 implements the project service/repository foundation, project membership lifecycle, project-level authorization, member-role authorization, project visibility enforcement, and audit of membership/security changes. SCRUM-180 implements document metadata, immutable versions, processing-job persistence, object-storage abstraction, secure upload validation, checksums, document authorization, malware scanning gates, and soft deletion. Full extraction workers, OCR, embeddings, explicit sharing grants, and retention automation remain planned.
 
 ## Dependency direction
 
@@ -29,7 +29,7 @@ SCRUM-179 implements the project service/repository foundation, project membersh
 
 ## Infrastructure
 
-Implemented: FastAPI, PostgreSQL 15 for local development, and SQLAlchemy async with asyncpg. Qdrant and object storage are future infrastructure, not implemented here.
+Implemented: FastAPI, PostgreSQL 15, SQLAlchemy async with asyncpg, and an S3-compatible private object-storage adapter with local MinIO configuration. Qdrant and AI/document-processing pipelines remain future infrastructure.
 
 ## Security baseline
 

@@ -1,1 +1,1 @@
-"""Documents domain boundary; business behavior is planned."""
+"""Document metadata, secure storage, versioning, and processing references."""

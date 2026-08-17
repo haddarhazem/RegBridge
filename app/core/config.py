@@ -14,6 +14,16 @@ class Settings(BaseSettings):
     oidc_audience: str | None = Field(default=None, alias="OIDC_AUDIENCE")
     oidc_discovery_url: str | None = Field(default=None, alias="OIDC_DISCOVERY_URL")
     oidc_algorithms: str = Field(default="RS256", alias="OIDC_ALGORITHMS")
+    document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, alias="DOCUMENT_MAX_UPLOAD_BYTES", gt=0)
+    object_storage_endpoint: str = Field(default="http://localhost:9000", alias="OBJECT_STORAGE_ENDPOINT")
+    object_storage_bucket: str = Field(default="regbridge-documents", alias="OBJECT_STORAGE_BUCKET")
+    object_storage_access_key: str = Field(default="local-access-key", alias="OBJECT_STORAGE_ACCESS_KEY")
+    object_storage_secret_key: str = Field(default="local-secret-key", alias="OBJECT_STORAGE_SECRET_KEY")
+    object_storage_region: str = Field(default="us-east-1", alias="OBJECT_STORAGE_REGION")
+    object_storage_secure: bool = Field(default=False, alias="OBJECT_STORAGE_SECURE")
+    object_storage_server_side_encryption: str | None = Field(default=None, alias="OBJECT_STORAGE_SERVER_SIDE_ENCRYPTION")
+    clamav_host: str = Field(default="localhost", alias="CLAMAV_HOST")
+    clamav_port: int = Field(default=3310, alias="CLAMAV_PORT", gt=0)
 
     @property
     def allowed_oidc_algorithms(self) -> list[str]:

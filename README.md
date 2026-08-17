@@ -15,7 +15,7 @@ SCRUM-176 provides technical foundations only: a FastAPI application, typed conf
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up -d postgres
+docker compose up -d postgres minio minio-init clamav
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[test]"
