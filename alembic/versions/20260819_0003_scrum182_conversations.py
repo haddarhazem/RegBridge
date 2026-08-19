@@ -45,7 +45,7 @@ def upgrade() -> None:
         sa.Column("created_at", timestamp_type, nullable=False, server_default=sa.text("now()")),
         sa.PrimaryKeyConstraint("id", name="pk_conversation_messages"),
         sa.ForeignKeyConstraint(["thread_id"], ["conversation_threads.id"], name="fk_conversation_messages_thread_id_conversation_threads", ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["parent_message_id"], ["conversation_messages.id"], name="fk_conversation_messages_parent_message_id_conversation_messages"),
+        sa.ForeignKeyConstraint(["parent_message_id"], ["conversation_messages.id"], name="fk_conversation_messages_parent_id"),
         sa.CheckConstraint("role IN ('user', 'assistant', 'system', 'tool')", name="ck_conversation_messages_role"),
         sa.CheckConstraint("status IN ('pending', 'completed', 'failed', 'redacted')", name="ck_conversation_messages_status"),
     )

@@ -29,7 +29,7 @@ class ConversationService:
         if thread.subject_type == "project":
             project = await self.session.scalar(select(Project).where(Project.id == thread.subject_id))
             membership = await self.session.scalar(select(ProjectMember).where(ProjectMember.project_id == thread.subject_id, ProjectMember.user_id == actor.user_id, ProjectMember.status == "active"))
-            if project is None or not self.policy.can_view(project, membership):
+            if project is None or membership is None or membership.status != "active":
                 raise HTTPException(status_code=404, detail="Conversation not found")
         elif thread.subject_type is not None:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -39,7 +39,7 @@ class ConversationService:
         if subject_type == "project":
             project = await self.session.scalar(select(Project).where(Project.id == subject_id))
             membership = await self.session.scalar(select(ProjectMember).where(ProjectMember.project_id == subject_id, ProjectMember.user_id == actor.user_id, ProjectMember.status == "active"))
-            if project is None or not self.policy.can_view(project, membership):
+            if project is None or membership is None or membership.status != "active":
                 raise HTTPException(status_code=404, detail="Project not found")
         elif subject_type is not None:
             raise HTTPException(status_code=404, detail="Unsupported conversation subject")
@@ -63,6 +63,8 @@ class ConversationService:
         return thread
 
     async def add_user_message(self, actor: AuthenticatedPrincipal, thread_id: uuid.UUID, content: str, parent_message_id: uuid.UUID | None = None) -> ConversationMessage:
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             thread = await self._authorized(actor, await self.repository.get_thread_by_id(thread_id))
             return await self.repository.add_message(thread, role="user", content=content, parent_message_id=parent_message_id)
@@ -70,6 +72,8 @@ class ConversationService:
     async def add_internal_message(self, thread_id: uuid.UUID, *, role: str, content: str, parent_message_id: uuid.UUID | None = None, status: str = "completed", content_json=None) -> ConversationMessage:
         if role not in {"assistant", "system", "tool", "user"}:
             raise ValueError("Unsupported message role")
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             thread = await self.repository.get_thread_by_id(thread_id)
             if thread is None or thread.status == "deleted":
@@ -77,7 +81,14 @@ class ConversationService:
             return await self.repository.add_message(thread, role=role, content=content, parent_message_id=parent_message_id, status=status, content_json=content_json)
 
 
-_SENSITIVE = re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+\S+|bearer\s+[A-Za-z0-9._~+/=-]+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*\S+|sk-[A-Za-z0-9_-]+)")
+_SENSITIVE = re.compile(
+    r"(?ix)("
+    r"[\"']?(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|secret)[\"']?"
+    r"\s*[:=]\s*[\"']?(?:bearer\s+)?[^\"',}\s]+[\"']?"
+    r"|bearer\s+[A-Za-z0-9._~+/=-]+"
+    r"|sk-[A-Za-z0-9_-]+"
+    r")"
+)
 
 
 def _safe_error_message(message: str, limit: int = 1000) -> str:
@@ -106,6 +117,8 @@ class AgentRunService:
     async def create_run(self, *, request_id: uuid.UUID, agent_name: str, capability: str, request_payload: AgentRunRequestTrace, model_metadata: ModelTraceMetadata | None = None, parent_run_id: uuid.UUID | None = None, user_id: uuid.UUID | None = None, message_id: uuid.UUID | None = None, subject_type: str | None = None, subject_id: uuid.UUID | None = None, prompt_version: str | None = None, status: str = "queued") -> AgentRun:
         request_json = self._json_payload(request_payload)
         model_json = self._json_payload(model_metadata or ModelTraceMetadata())
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             if parent_run_id is not None:
                 parent = await self.repository.get_parent_run(parent_run_id)
@@ -118,6 +131,8 @@ class AgentRunService:
             return await self.repository.create_run(request_id=request_id, parent_run_id=parent_run_id, user_id=user_id, message_id=message_id, agent_name=agent_name, capability=capability, subject_type=subject_type, subject_id=subject_id, request_payload=request_json, model_metadata=model_json, prompt_version=prompt_version, status=status)
 
     async def _transition(self, run_id: uuid.UUID, target: str, *, response_payload=None, error_code: str | None = None, error_message: str | None = None) -> AgentRun:
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             run = await self.repository.get_run(run_id)
             if run is None:

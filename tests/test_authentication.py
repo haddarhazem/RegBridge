@@ -21,9 +21,9 @@ def signing_keys() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
 
 def make_settings() -> Settings:
     return Settings(
-        database_url="postgresql+asyncpg://regbridge:regbridge@localhost:5432/regbridge",
-        oidc_issuer="https://issuer.example.test/",
-        oidc_audience="https://api.example.test/",
+        DATABASE_URL="postgresql+asyncpg://regbridge:regbridge@127.0.0.1:55432/regbridge",
+        OIDC_ISSUER="https://issuer.example.test/",
+        OIDC_AUDIENCE="https://api.example.test/",
     )
 
 

@@ -55,7 +55,7 @@ Model/schema change → Alembic migration → review → test on a disposable da
 Development migrations may be downgraded on disposable databases when safe:
 
 ```powershell
-$env:DATABASE_URL="postgresql+asyncpg://regbridge:regbridge@localhost:5432/regbridge"
+$env:DATABASE_URL="postgresql+asyncpg://regbridge:regbridge@127.0.0.1:55432/regbridge"
 alembic upgrade head
 alembic current
 alembic downgrade -1

@@ -24,6 +24,12 @@ def test_error_redaction_removes_credentials_and_limits_length() -> None:
     assert len(safe) == 1000
 
 
+def test_error_redaction_removes_json_secret_values() -> None:
+    safe = _safe_error_message('{"api_key": "SCRUM182_TEST_API_KEY_SECRET"}')
+
+    assert "SCRUM182_TEST_API_KEY_SECRET" not in safe
+
+
 def test_run_transition_graph_is_explicit() -> None:
     assert "running" in AgentRunService.TRANSITIONS["queued"]
     assert "succeeded" in AgentRunService.TRANSITIONS["running"]
