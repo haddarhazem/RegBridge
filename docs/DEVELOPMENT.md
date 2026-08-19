@@ -111,6 +111,16 @@ This does not mean every Jira ticket requires research.
 - no known critical regression;
 - no secrets committed.
 
+## Conversation and trace development
+
+SCRUM-182 establishes the framework-neutral persistence boundary for
+conversations and execution traces. `agent_runs.id` identifies one run;
+`request_id` is a non-unique correlation ID shared by runs caused by one
+request. Trace payloads must use allowlisted Pydantic contracts and be
+minimized before JSONB persistence. Conversation history is authenticated-only;
+anonymous requests do not create persistent threads or messages.
+
 ## Next tickets
 
-The immediate sequence is SCRUM-177, SCRUM-178, SCRUM-179, SCRUM-180, and SCRUM-181. Jira remains the work-tracking source of truth.
+The immediate sequence is SCRUM-183 onward for research-gated orchestration.
+Jira remains the work-tracking source of truth.

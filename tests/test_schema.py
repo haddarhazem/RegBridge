@@ -18,6 +18,9 @@ EXPECTED_TABLES = {
     "documents",
     "document_versions",
     "document_processing_jobs",
+    "conversation_threads",
+    "conversation_messages",
+    "agent_runs",
 }
 
 
@@ -28,13 +31,13 @@ def test_single_metadata_contains_foundation_and_document_tables() -> None:
     assert "investor_profiles" not in Base.metadata.tables
 
 
-def test_alembic_has_scrum180_head() -> None:
+def test_alembic_has_scrum182_head() -> None:
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum180_documents"]
-    assert script.get_revision("scrum180_documents").down_revision == "scrum177_foundation"
+    assert heads == ["scrum182_conversations"]
+    assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 
 def test_document_metadata_has_no_binary_content_column() -> None:

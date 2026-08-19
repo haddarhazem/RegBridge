@@ -31,6 +31,19 @@ SCRUM-180 adds:
 - `document_versions`: immutable object-storage references, validated MIME, size, checksum, uploader, and scan status.
 - `document_processing_jobs`: idempotent references to exact immutable versions.
 
+SCRUM-182 adds authenticated-only conversation history and the correlated
+agent-run trace foundation:
+
+- `conversation_threads`: persistent threads owned by authenticated users;
+- `conversation_messages`: ordered, role/status-constrained messages;
+- `agent_runs`: unique run IDs, shared non-unique request correlation IDs,
+  parent/child hierarchy, stable SQL fields, and allowlisted JSONB traces.
+
+`agent_runs.request_id` is intentionally **not unique**. It identifies the
+incoming request shared by all related runs; `agent_runs.id` identifies one run.
+Trace payloads are validated before persistence and must not contain tokens,
+credentials, arbitrary ORM dumps, or full private documents.
+
 Document binaries remain outside PostgreSQL in private object storage. See [docs/DOCUMENTS.md](DOCUMENTS.md).
 
 ## Migration policy

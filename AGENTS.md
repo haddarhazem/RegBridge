@@ -59,6 +59,12 @@ RegBridge.
 - sensitive permission and document actions require audit verification;
 - never disable security tests to make CI green;
 - do not make production services required for automated tests.
+- `agent_runs.id` identifies one run; `request_id` is shared request correlation and is not unique;
+- `parent_run_id` represents execution hierarchy and child runs must retain the parent correlation ID;
+- trace payloads are allowlist-based Pydantic projections; never serialize arbitrary ORM/application objects into trace JSONB;
+- redact and minimize trace data before persistence; never persist tokens, credentials, authorization headers, or unnecessary private content;
+- persistent conversation history is authenticated-only; anonymous technical traces, if used internally, must remain minimal;
+- SCRUM-182 does not select an agent framework; later production agents must provide trace-safe Pydantic projections.
 - read any `Research / Engineering Investigation` Jira section before implementation;
 - never silently choose a framework, model, or retrieval strategy when the Jira ticket defines an experiment gate;
 - do not fabricate experiment results or write a conclusion before running the experiment;

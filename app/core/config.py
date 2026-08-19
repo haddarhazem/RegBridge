@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     object_storage_server_side_encryption: str | None = Field(default=None, alias="OBJECT_STORAGE_SERVER_SIDE_ENCRYPTION")
     clamav_host: str = Field(default="localhost", alias="CLAMAV_HOST")
     clamav_port: int = Field(default=3310, alias="CLAMAV_PORT", gt=0)
+    trace_max_payload_bytes: int = Field(default=32768, alias="TRACE_MAX_PAYLOAD_BYTES", gt=0)
 
     @property
     def allowed_oidc_algorithms(self) -> list[str]:

@@ -1207,7 +1207,7 @@ Journal de chaque exécution d'agent ou étape d'orchestration, avec entrées/so
 | Colonne | Type | Règles |
 |---|---|---|
 | `id` | `UUID` | PK |
-| `request_id` | `UUID` | UNIQUE, NOT NULL |
+| `request_id` | `UUID` | NOT NULL; corrélation partagée entre les runs d'une même requête |
 | `parent_run_id` | `UUID` | FK agent_runs.id, NULL |
 | `user_id` | `UUID` | FK users.id, NULL |
 | `message_id` | `UUID` | FK conversation_messages.id, NULL |
@@ -1229,6 +1229,8 @@ Journal de chaque exécution d'agent ou étape d'orchestration, avec entrées/so
 - status IN (queued, running, succeeded, failed, cancelled)
 
 **Index :**
+- INDEX request_id
+- INDEX parent_run_id
 - INDEX agent_name, capability
 - INDEX subject_type, subject_id
 - INDEX user_id, started_at DESC

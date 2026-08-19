@@ -120,6 +120,15 @@ Une publication scientifique visible dans RegBridge doit permettre de retrouver 
 - Les champs de besoins startup retenus pour le matching Research.
 - Le processus de déclaration et de vérification des droits, licences et attributions.
 
+## DÃ©cisions SCRUM-182 — traÃ§abilitÃ© des exÃ©cutions GenAI
+
+| ID | DÃ©cision | Statut | ConsÃ©quence |
+|---|---|---|---|
+| DEC-AI-010 | `agent_runs.id` identifie une exÃ©cution et `request_id` est une corrÃ©lation partagÃ©e, non unique. | ValidÃ©e | Les exÃ©cutions parentes et enfants d'une mÃªme requÃªte sont retrouvables ensemble. |
+| DEC-AI-011 | Le stockage des traces est hybride : colonnes SQL stables et JSONB structurÃ© pour les mÃ©tadonnÃ©es Ã©volutives. | ValidÃ©e | Les dimensions requÃªtables restent contraintes sans colonnes spÃ©cifiques Ã  chaque fournisseur. |
+| DEC-AI-012 | Les payloads de trace sont des projections Pydantic allowlistÃ©es, minimisÃ©es et rÃ©digÃ©es avant persistance. | ValidÃ©e | Les tokens, secrets, dumps ORM et contenus privÃ©s complets ne sont pas enregistrÃ©s. |
+| DEC-AI-013 | L'historique persistant est rÃ©servÃ© aux utilisateurs authentifiÃ©s. | ValidÃ©e | Un visiteur anonyme ne crÃ©e ni thread ni message ; une trace technique minimale reste optionnelle. |
+
 ## 8. Sources de conception
 
 - Discussion de cadrage RegBridge consolidée jusqu'au 11 août 2026.
