@@ -1,0 +1,14 @@
+benchmark_id: regbridge-regulatory-rag
+version: 0.1.0
+created_at: TBD
+task: retrieval
+size: TBD
+language:
+  - fr
+sources:
+  - official regulatory corpus (to be selected and licensed)
+annotation:
+  description: TBD before benchmark release
+metrics:
+  - recall_at_5
+  - mrr

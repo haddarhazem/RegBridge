@@ -68,6 +68,13 @@ docs/           architecture and engineering guidance
 
 RegBridge V1 is a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Engineering Research
+
+RegBridge uses controlled engineering experiments to evaluate selected technical
+decisions instead of choosing technologies solely by popularity or intuition.
+Examples include orchestration, RAG retrieval, verification, and quality/cost
+trade-offs. See [docs/engineering-research/README.md](docs/engineering-research/README.md).
+
 ## Development guide
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workflow and engineering rules.

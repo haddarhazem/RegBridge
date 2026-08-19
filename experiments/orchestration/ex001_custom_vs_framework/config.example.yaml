@@ -1,0 +1,18 @@
+experiment_id: EX-001
+research_question: RQ-001
+dataset_id: synthetic-controlled-workflow
+dataset_version: 0.1.0
+seed: 42
+model: fake-controlled-agent
+prompt_version: not-applicable
+metrics:
+  - testability
+  - authorization_control
+  - traceability
+  - partial_failure_handling
+  - debuggability
+  - provider_independence
+  - extensibility
+  - implementation_complexity
+  - dependency_footprint
+  - runtime_overhead

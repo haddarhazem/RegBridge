@@ -13,3 +13,8 @@ venv/
 
 .coverage
 htmlcov/
+
+# Generated research experiment outputs. Curated Markdown summaries remain tracked.
+artifacts/experiments/*
+!artifacts/experiments/.gitkeep
+*.local-results.json

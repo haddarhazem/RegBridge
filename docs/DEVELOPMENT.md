@@ -84,6 +84,24 @@ Every ticket must add or update tests corresponding to its acceptance criteria.
 
 Do not implement future Jira functionality simply because a supporting folder exists.
 
+## Research-oriented engineering workflow
+
+For Jira tickets containing a `Research / Engineering Investigation` section:
+
+1. Read the research question.
+2. Create or update the experiment protocol.
+3. Define metrics.
+4. Define controlled variables.
+5. Implement only the experiment or prototype needed.
+6. Run it.
+7. Record results.
+8. Analyze failure cases.
+9. Document limitations.
+10. Create a research decision.
+11. Only then implement the selected production design.
+
+This does not mean every Jira ticket requires research.
+
 ## Definition of Done
 
 - implementation complete;

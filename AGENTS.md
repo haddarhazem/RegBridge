@@ -59,6 +59,16 @@ RegBridge.
 - sensitive permission and document actions require audit verification;
 - never disable security tests to make CI green;
 - do not make production services required for automated tests.
+- read any `Research / Engineering Investigation` Jira section before implementation;
+- never silently choose a framework, model, or retrieval strategy when the Jira ticket defines an experiment gate;
+- do not fabricate experiment results or write a conclusion before running the experiment;
+- keep controlled variables stable and record relevant configuration and version information;
+- keep experiment code separate from production code; production code must not import `experiments`;
+- do not commit secrets or private benchmark data, and do not use production/customer data as an evaluation shortcut;
+- link experiments to Jira tickets and document limitations and negative results;
+- a failed hypothesis is a valid result;
+- do not optimize experiments merely to make a preferred architecture win;
+- implement the production choice only after the research gate is satisfied.
 
 ## Data/AI boundary
 
