@@ -16,3 +16,8 @@ metrics:
   - implementation_complexity
   - dependency_footprint
   - runtime_overhead
+protocol_version: 1.0.0
+scenario_version: 1.0.0
+langgraph_version: 1.2.11
+warmup_iterations: 10
+benchmark_iterations: 100

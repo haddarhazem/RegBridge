@@ -25,6 +25,9 @@ test = [
   "pytest>=8.0,<9.0",
   "pytest-asyncio>=0.25,<1.0",
 ]
+research = [
+  "langgraph==1.2.11",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

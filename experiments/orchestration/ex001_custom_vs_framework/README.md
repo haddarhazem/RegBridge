@@ -10,7 +10,7 @@ RQ-001
 
 ## Status
 
-PLANNED
+COMPLETED
 
 ## Goal
 
@@ -57,4 +57,20 @@ The weighted score is decision support, not scientific truth. Qualitative
 evidence and limitations must still be discussed.
 
 This directory is preparation only. The orchestrators and experiment runner
-will be implemented under SCRUM-183.
+are implemented here for SCRUM-183's research phase. This directory contains
+no production orchestration code and is never imported by `app/`.
+
+Run correctness tests with:
+
+```powershell
+python -m pytest experiments/orchestration/ex001_custom_vs_framework/tests -q
+```
+
+Run the deterministic experiment and write artifacts with:
+
+```powershell
+python -m experiments.orchestration.ex001_custom_vs_framework.runner
+```
+
+The runner uses deterministic fake agents, no provider, no network, and no
+LangGraph checkpointing, persistence, memory, or LangSmith tracing.
