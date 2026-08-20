@@ -19,7 +19,7 @@ Implemented in SCRUM-176: application bootstrap, configuration, database connect
 
 SCRUM-179 implements the project service/repository foundation, project membership lifecycle, project-level authorization, member-role authorization, project visibility enforcement, and audit of membership/security changes. SCRUM-180 implements document metadata, immutable versions, processing-job persistence, object-storage abstraction, secure upload validation, checksums, document authorization, malware scanning gates, and soft deletion. Full extraction workers, OCR, embeddings, explicit sharing grants, and retention automation remain planned.
 
-SCRUM-181 implements the automated CI baseline, clean-database migration gate, access-control regression suite, and audit verification baseline. SCRUM-182 implements authenticated conversation persistence, request-correlated agent-run tracing, parent/child run semantics, and allowlisted trace-safe contracts. Production orchestration, monitoring, advanced security scanning, and AI observability remain planned.
+SCRUM-181 implements the automated CI baseline, clean-database migration gate, access-control regression suite, and audit verification baseline. SCRUM-182 implements authenticated conversation persistence, request-correlated agent-run tracing, parent/child run semantics, and allowlisted trace-safe contracts. SCRUM-183 implements the accepted lightweight Python/Pydantic orchestration foundation with explicit deterministic routing, authorization-before-context loading, minimized DTOs, structured aggregation, and SCRUM-182 trace integration. LangGraph was evaluated in EX-001 but is not a V1 production dependency. RAG, verification, monitoring, and AI observability remain future scope.
 
 ## Dependency direction
 
@@ -28,6 +28,7 @@ SCRUM-181 implements the automated CI baseline, clean-database migration gate, a
 - Database access remains behind infrastructure/repository layers.
 - Future AI agents receive explicit validated model input, not raw SQLAlchemy entities.
 - Conversation and agent-run persistence is accessed through focused repositories and services; trace JSONB is produced only from explicit Pydantic projections.
+- Production orchestration uses explicit Python/Pydantic control flow. ContextBuilder authorization precedes sensitive projection loading, and agents receive validated minimized DTOs rather than ORM entities.
 - Cross-domain imports are deliberate rather than arbitrary.
 
 ## Infrastructure

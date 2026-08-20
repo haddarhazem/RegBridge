@@ -120,6 +120,18 @@ request. Trace payloads must use allowlisted Pydantic contracts and be
 minimized before JSONB persistence. Conversation history is authenticated-only;
 anonymous requests do not create persistent threads or messages.
 
+## Production orchestration
+
+SCRUM-183 follows accepted RD-002/ADR-0006: production orchestration is
+lightweight, sequential, provider-neutral Python/Pydantic. The deterministic
+classifier and router are replaceable through dependency injection. A
+ContextBuilder authorizes current project membership before loading a minimal
+projection, and agents receive `AgentRequest` DTOs only—never ORM entities,
+sessions, tokens, or repositories. Partial agent failures retain successful
+results and provenance while SCRUM-182 root/child traces remain correlated.
+LangGraph remains optional research-only code and is not imported by
+production.
+
 ## Next tickets
 
 The immediate sequence is SCRUM-183 onward for research-gated orchestration.

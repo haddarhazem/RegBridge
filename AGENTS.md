@@ -75,6 +75,12 @@ RegBridge.
 - a failed hypothesis is a valid result;
 - do not optimize experiments merely to make a preferred architecture win;
 - implement the production choice only after the research gate is satisfied.
+- production orchestration follows accepted lightweight Python/Pydantic decision RD-002/ADR-0006;
+- production must not import experiment implementations or orchestration frameworks;
+- ContextBuilder authorizes before loading sensitive resources, through repositories rather than raw queries;
+- agents receive minimized Pydantic DTOs, never ORM entities, sessions, tokens, or repositories;
+- 1..N agent failures preserve successful results and provenance using SCRUM-182 root/child correlation;
+- revisit RD-002 before introducing an orchestration framework.
 
 ## Data/AI boundary
 
