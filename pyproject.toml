@@ -27,6 +27,9 @@ test = [
 ]
 research = [
   "langgraph==1.2.11",
+  "qdrant-client>=1.18,<2.0",
+  "transformers>=5.0,<6.0",
+  "torch>=2.0,<3.0",
 ]
 
 [tool.pytest.ini_options]

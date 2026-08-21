@@ -1,0 +1,33 @@
+{
+  "collection": "reglementation_chunks",
+  "capture_timestamp": "2026-08-20T21:30:25.6732212Z",
+  "points_count_start": 47881,
+  "points_count_end": 47881,
+  "indexed_vectors_count": 45982,
+  "segments_count": 2,
+  "vector_size": 1024,
+  "distance": "Cosine",
+  "hnsw": {
+    "m": 16,
+    "ef_construct": 100,
+    "on_disk": false
+  },
+  "quantization": null,
+  "on_disk_payload": true,
+  "strict_mode_enabled": true,
+  "payload_schema": {},
+  "observed_payload_keys": [
+    "chunk_index",
+    "content",
+    "parent_url",
+    "source_domain",
+    "url"
+  ],
+  "embedding_model": "BAAI/bge-m3",
+  "embedding_device": "cpu",
+  "qdrant_client_version": "1.18.0",
+  "python_version": "3.12.6",
+  "git_commit": "240d1008d6511a5262c5d0110aab8ba8b63a7901",
+  "collection_changed_during_read_only_inspection": false,
+  "secrets_included": false
+}
