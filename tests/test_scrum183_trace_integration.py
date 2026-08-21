@@ -8,6 +8,8 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.exc import SQLAlchemyError
 
+import app.db.models  # noqa: F401 - load the complete SQLAlchemy metadata registry for standalone execution
+
 from app.modules.ai.agents import AgentRegistry
 from app.modules.ai.context import AuthorizedContextBuilder
 from app.modules.ai.contracts import AgentRequest, AgentResult, AuthorizedContext, OrchestrationRequest
