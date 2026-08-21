@@ -75,6 +75,11 @@ decisions instead of choosing technologies solely by popularity or intuition.
 Examples include orchestration, RAG retrieval, verification, and quality/cost
 trade-offs. See [docs/engineering-research/README.md](docs/engineering-research/README.md).
 
+Production regulatory retrieval and grounded generation are documented in
+[docs/REGULATORY.md](docs/REGULATORY.md). Configure `MISTRAL_API_KEY`,
+`MISTRAL_MODEL`, `QDRANT_URL`, and `QDRANT_API_KEY` locally; never commit or
+log their values.
+
 ## Development guide
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workflow and engineering rules.

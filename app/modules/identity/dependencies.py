@@ -58,3 +58,12 @@ async def get_authenticated_principal(
         select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id).order_by(Role.code)
     )
     return AuthenticatedPrincipal(user_id=user.id, email=user.email, roles=tuple(role_result.scalars().all()), provider=user_identity.provider)
+
+
+async def get_optional_authenticated_principal(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AuthenticatedPrincipal | None:
+    if credentials is None:
+        return None
+    return await get_authenticated_principal(credentials, session)

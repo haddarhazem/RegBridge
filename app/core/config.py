@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     clamav_host: str = Field(default="localhost", alias="CLAMAV_HOST")
     clamav_port: int = Field(default=3310, alias="CLAMAV_PORT", gt=0)
     trace_max_payload_bytes: int = Field(default=32768, alias="TRACE_MAX_PAYLOAD_BYTES", gt=0)
+    qdrant_url: str | None = Field(default=None, alias="QDRANT_URL")
+    qdrant_api_key: SecretStr | None = Field(default=None, alias="QDRANT_API_KEY", repr=False)
+    qdrant_collection: str = Field(default="reglementation_chunks", alias="QDRANT_COLLECTION")
+    bge_m3_model_name: str = Field(default="BAAI/bge-m3", alias="BGE_M3_MODEL_NAME")
+    bge_m3_device: str = Field(default="cpu", alias="BGE_M3_DEVICE")
+    mistral_api_key: SecretStr | None = Field(default=None, alias="MISTRAL_API_KEY", repr=False)
+    mistral_model: str | None = Field(default=None, alias="MISTRAL_MODEL")
 
     @property
     def allowed_oidc_algorithms(self) -> list[str]:

@@ -14,6 +14,7 @@ class OrchestrationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    question: str = Field(default="", max_length=4000)
     principal: AuthenticatedPrincipal | None = None
     subject_type: Literal["project"] | None = None
     subject_id: uuid.UUID | None = None
@@ -51,6 +52,7 @@ class AgentRequest(BaseModel):
 
     request_id: uuid.UUID
     parent_run_id: uuid.UUID
+    question: str = Field(default="", max_length=4000)
     capability: str = Field(max_length=100)
     locale: str = Field(max_length=20)
     subject_type: Literal["project"] | None = None
@@ -64,6 +66,7 @@ class AgentResult(BaseModel):
     agent_name: str = Field(max_length=80)
     capability: str = Field(max_length=100)
     status: Literal["succeeded", "failed"]
+    answer: str | None = Field(default=None, max_length=30000)
     findings: list[str] = Field(default_factory=list, max_length=50)
     risks: list[str] = Field(default_factory=list, max_length=50)
     recommendations: list[str] = Field(default_factory=list, max_length=50)
@@ -73,6 +76,7 @@ class AgentResult(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=50)
     artifacts: list[str] = Field(default_factory=list, max_length=50)
     structured_payload: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=50)
+    evidence: list[dict[str, str | int | float | None]] = Field(default_factory=list, max_length=5)
     run_id: uuid.UUID | None = None
     error_code: str | None = Field(default=None, max_length=80)
 

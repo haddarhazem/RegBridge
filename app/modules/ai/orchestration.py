@@ -14,7 +14,7 @@ from app.modules.ai.contracts import (
     OrchestrationRequest,
     OrchestrationResult,
 )
-from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace, TraceResourceRef
+from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace, TraceResourceRef, TraceSourceRef
 from app.modules.ai.services import AgentRunService
 
 
@@ -176,6 +176,7 @@ class Orchestrator:
                 agent_request = AgentRequest(
                     request_id=request.request_id,
                     parent_run_id=child_id,
+                    question=request.question,
                     capability=capability,
                     locale=request.locale,
                     subject_type=context.subject_type,
@@ -221,4 +222,13 @@ class Orchestrator:
 
     @staticmethod
     def _agent_trace(result: AgentResult) -> AgentRunResponseTrace:
-        return AgentRunResponseTrace(summary=f"{result.agent_name} completed", result={"status": result.status, "capability": result.capability})
+        source_refs = [
+            TraceSourceRef(source_id=str(item.get("point_id", "")), chunk_id=str(item.get("point_id", "")))
+            for item in result.evidence
+            if item.get("point_id")
+        ]
+        return AgentRunResponseTrace(
+            summary=f"{result.agent_name} completed",
+            result={"status": result.status, "capability": result.capability, **result.structured_payload},
+            source_refs=source_refs,
+        )
