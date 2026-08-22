@@ -1,0 +1,16 @@
+{
+  "benchmark_id": "regulatory_assessment_stability_final_v1",
+  "ticket": "SCRUM-189",
+  "type": "final_validation_set",
+  "expected_behavior_frozen_before_execution": true,
+  "scenarios": [
+    {"id":"RASF-001","description":"identical confirmed state repeated","confirmed":[{"domain":"technology","value":"AI"}],"expected":"stable"},
+    {"id":"RASF-002","description":"pending fact added","confirmed":[{"domain":"technology","value":"AI"}],"mutable":[{"domain":"data","value":"personal data","status":"pending_confirmation"}],"expected":"stable"},
+    {"id":"RASF-003","description":"rejected fact added","confirmed":[{"domain":"technology","value":"AI"}],"mutable":[{"domain":"sector","value":"health","status":"deleted"}],"expected":"stable"},
+    {"id":"RASF-004","description":"irrelevant confirmed field wording change","confirmed":[{"domain":"technology","value":"AI"}],"changed_confirmed":[{"domain":"technology","value":"AI"},{"domain":"display_name","value":"Renamed idea"}],"expected":"stable"},
+    {"id":"RASF-005","description":"relevant technology correction","confirmed":[{"domain":"technology","value":"AI"}],"changed_confirmed":[{"domain":"technology","value":"rule-based software","status":"corrected"}],"expected":"material_change"},
+    {"id":"RASF-006","description":"personal-data processing change","confirmed":[{"domain":"data","value":"anonymous analytics"}],"changed_confirmed":[{"domain":"data","value":"personal data"}],"expected":"material_change"},
+    {"id":"RASF-007","description":"France-only to EU market change","confirmed":[{"domain":"market","value":"France"}],"changed_confirmed":[{"domain":"market","value":"European Union"}],"expected":"material_change"},
+    {"id":"RASF-008","description":"regulated-sector change","confirmed":[{"domain":"sector","value":"retail"}],"changed_confirmed":[{"domain":"sector","value":"health"}],"expected":"material_change"}
+  ]
+}

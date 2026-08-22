@@ -1,0 +1,19 @@
+{
+  "benchmark_id": "regulatory_assessment_stability_v1",
+  "ticket": "SCRUM-189",
+  "research_question": "RQ-007",
+  "scenarios": [
+    {"id":"RAS-001","split":"development","description":"identical confirmed state repeated","confirmed":[{"domain":"technology","value":"AI"}],"mutable":[],"expected":"stable"},
+    {"id":"RAS-002","split":"development","description":"pending personal-data fact added","confirmed":[{"domain":"technology","value":"AI"}],"mutable":[{"domain":"data","value":"personal data","status":"pending_confirmation"}],"expected":"stable"},
+    {"id":"RAS-003","split":"development","description":"irrelevant display-name edit","confirmed":[{"domain":"technology","value":"AI"}],"mutable":[{"domain":"display_name","value":"New name","status":"mutable"}],"expected":"stable"},
+    {"id":"RAS-004","split":"development","description":"pending technology fact added","confirmed":[{"domain":"data","value":"personal data"}],"mutable":[{"domain":"technology","value":"AI","status":"pending_confirmation"}],"expected":"stable"},
+    {"id":"RAS-005","split":"development","description":"confirmed data-processing fact changed","confirmed":[{"domain":"data","value":"employee data"}],"changed_confirmed":[{"domain":"data","value":"personal data"}],"expected":"material_change"},
+    {"id":"RAS-006","split":"development","description":"corrected technology replaces inference","confirmed":[{"domain":"technology","value":"AI"}],"changed_confirmed":[{"domain":"technology","value":"rule-based software","status":"corrected"}],"mutable":[{"domain":"technology","value":"AI","status":"inferred"}],"expected":"material_change"},
+    {"id":"RAS-007","split":"development","description":"rejected fact added","confirmed":[{"domain":"technology","value":"AI"}],"mutable":[{"domain":"sector","value":"health","status":"deleted"}],"expected":"stable"},
+    {"id":"RAS-008","split":"development","description":"confirmed activity changes to healthcare","confirmed":[{"domain":"activity","value":"e-commerce"}],"changed_confirmed":[{"domain":"activity","value":"healthcare service"}],"expected":"material_change"},
+    {"id":"RAS-009","split":"holdout","description":"technology changes from SaaS to IoT","confirmed":[{"domain":"technology","value":"SaaS"}],"changed_confirmed":[{"domain":"technology","value":"IoT"}],"expected":"material_change"},
+    {"id":"RAS-010","split":"holdout","description":"France-only market becomes EU","confirmed":[{"domain":"market","value":"France"}],"changed_confirmed":[{"domain":"market","value":"European Union"}],"expected":"material_change"},
+    {"id":"RAS-011","split":"holdout","description":"pending health-sector fact added","confirmed":[{"domain":"technology","value":"SaaS"}],"mutable":[{"domain":"sector","value":"health","status":"pending_confirmation"}],"expected":"stable"},
+    {"id":"RAS-012","split":"holdout","description":"confirmed data processing changes from anonymous to personal","confirmed":[{"domain":"data","value":"anonymous analytics"}],"changed_confirmed":[{"domain":"data","value":"personal data"}],"expected":"material_change"}
+  ]
+}
