@@ -1,0 +1,20 @@
+{
+  "benchmark_id": "adaptive_onboarding_holdout_v1",
+  "version": "1.0",
+  "research_question": "RQ-187: corrected deterministic adaptive onboarding on an independent holdout",
+  "domains": ["activity", "sector", "technology", "data", "market", "location"],
+  "scenarios": [
+    {"id":"HOLD-001","name":"local cleaning service","activity":"Service de nettoyage local","sector":"Services","expected_relevance":{"activity":"required","sector":"required","technology":"not_required","data":"not_required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-002","name":"online grocery shop","activity":"Épicerie e-commerce","sector":"Commerce alimentaire","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-003","name":"HR SaaS","activity":"Logiciel SaaS de ressources humaines","sector":"Services B2B","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-004","name":"medical AI","activity":"Système d'IA pour aide au diagnostic","sector":"Santé","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-005","name":"connected irrigation","activity":"Capteurs connectés pour irrigation","sector":"Agriculture IoT","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-006","name":"cross-border craft","activity":"Vente transfrontalière de meubles artisanaux","sector":"Artisanat","target_market":"Union européenne","location":"Tunisie","expected_relevance":{"activity":"required","sector":"required","technology":"not_required","data":"not_required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-007","name":"financial platform","activity":"Plateforme de paiement et détection de fraude","sector":"Services financiers","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-008","name":"resumed local plumber","activity":"Plomberie locale","sector":"Bâtiment","target_market":"France","location":"France","expected_relevance":{"activity":"required","sector":"required","technology":"not_required","data":"not_required","market":"required","location":"required"},"initial_confirmed":["activity","sector","market","location"]},
+    {"id":"HOLD-009","name":"resumed non-tech workshop","activity":"Atelier de céramique","sector":"Artisanat","expected_relevance":{"activity":"required","sector":"required","technology":"not_required","data":"not_required","market":"required","location":"required"},"initial_confirmed":["activity","sector"]},
+    {"id":"HOLD-010","name":"customer loyalty data","activity":"Programme de fidélité clients","sector":"Commerce de proximité","expected_relevance":{"activity":"required","sector":"required","technology":"not_required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-011","name":"mobile client app","activity":"Application mobile de suivi des clients","sector":"Services","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"required","market":"required","location":"required"},"initial_confirmed":[]},
+    {"id":"HOLD-012","name":"industrial sensors","activity":"Fabrication de capteurs de température","sector":"Industrie","expected_relevance":{"activity":"required","sector":"required","technology":"required","data":"not_required","market":"required","location":"required"},"initial_confirmed":[]}
+  ]
+}

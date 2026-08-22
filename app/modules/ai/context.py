@@ -21,6 +21,12 @@ class ProjectContextProjection:
     project_type: str
     country_code: str
     user_goal: str | None
+    activity: str | None = None
+    sector: str | None = None
+    technology: str | None = None
+    data_context: str | None = None
+    target_market: str | None = None
+    location: str | None = None
 
 
 class ProjectContextRepository(Protocol):
@@ -60,9 +66,14 @@ class AuthorizedContextBuilder:
             project_type=projection.project_type,
             country_code=projection.country_code,
             user_goal=projection.user_goal,
+            activity=projection.activity,
+            sector=projection.sector,
+            technology=projection.technology,
+            data_context=projection.data_context,
+            target_market=projection.target_market,
+            location=projection.location,
         )
 
 
 def as_http_authorization_error(error: ContextAuthorizationError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
-

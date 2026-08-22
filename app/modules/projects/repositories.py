@@ -27,10 +27,29 @@ class ProjectContextRepository:
 
     async def load_minimal_projection(self, project_id: uuid.UUID) -> ProjectContextProjection | None:
         row = await self.session.execute(
-            select(Project.project_type, Project.country_code, Project.user_goal).where(Project.id == project_id)
+            select(
+                Project.project_type,
+                Project.country_code,
+                Project.user_goal,
+                Project.activity,
+                Project.sector,
+                Project.technology,
+                Project.data_context,
+                Project.target_market,
+                Project.location,
+            ).where(Project.id == project_id)
         )
         values = row.one_or_none()
         if values is None:
             return None
-        return ProjectContextProjection(project_type=values.project_type, country_code=values.country_code, user_goal=values.user_goal)
-
+        return ProjectContextProjection(
+            project_type=values.project_type,
+            country_code=values.country_code,
+            user_goal=values.user_goal,
+            activity=values.activity,
+            sector=values.sector,
+            technology=values.technology,
+            data_context=values.data_context,
+            target_market=values.target_market,
+            location=values.location,
+        )

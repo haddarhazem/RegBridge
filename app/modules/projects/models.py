@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,11 +21,18 @@ class Project(Base):
     display_name: Mapped[str | None] = mapped_column(String(255))
     raw_description: Mapped[str] = mapped_column(Text, nullable=False)
     user_goal: Mapped[str | None] = mapped_column(Text)
+    activity: Mapped[str | None] = mapped_column(String(500))
+    sector: Mapped[str | None] = mapped_column(String(160))
+    technology: Mapped[str | None] = mapped_column(String(500))
+    data_context: Mapped[str | None] = mapped_column(String(500))
+    location: Mapped[str | None] = mapped_column(String(160))
     current_progress: Mapped[str | None] = mapped_column(String(80))
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, server_default="FR")
-    target_market: Mapped[str] = mapped_column(String(120), nullable=False, server_default="France")
+    target_market: Mapped[str | None] = mapped_column(String(120), nullable=True, server_default="France")
     language: Mapped[str] = mapped_column(String(10), nullable=False, server_default="fr")
     visibility: Mapped[str] = mapped_column(String(30), nullable=False, server_default="private")
+    onboarding_status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="in_progress")
+    confirmed_fields: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 

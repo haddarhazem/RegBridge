@@ -10,7 +10,8 @@ from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.audit import AuditLog
 from app.modules.projects.authorization import ProjectAuthorizationPolicy
 from app.modules.projects.models import Project, ProjectMember
-from app.modules.projects.schemas import ProjectCreate, ProjectMemberInvite, ProjectMemberUpdate, ProjectUpdate
+from app.modules.projects.onboarding import onboarding_status
+from app.modules.projects.schemas import IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectMemberInvite, ProjectMemberUpdate, ProjectUpdate
 
 
 class ProjectService:
@@ -58,6 +59,55 @@ class ProjectService:
                 )
             )
             await self._audit(actor, "project.created", project.id, project.id, "project", {})
+        return project
+
+    async def create_idea(self, actor: AuthenticatedPrincipal, data: IdeaProjectCreate) -> Project:
+        async with self.session.begin():
+            project = Project(
+                owner_user_id=actor.user_id,
+                project_type="idea",
+                display_name=data.display_name,
+                raw_description=data.display_name or "Idea project",
+                target_market=None,
+                confirmed_fields={},
+                onboarding_status="in_progress",
+            )
+            self.session.add(project)
+            await self.session.flush()
+            self.session.add(ProjectMember(
+                project_id=project.id,
+                user_id=actor.user_id,
+                member_role="owner",
+                status="active",
+                joined_at=datetime.now(timezone.utc),
+            ))
+            await self._audit(actor, "project.idea_created", project.id, project.id, "project", {})
+        return project
+
+    async def get_idea_for_user(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> Project:
+        project, _ = await self.get_for_user(actor, project_id)
+        if project.project_type != "idea":
+            raise HTTPException(status_code=404, detail="Idea project not found")
+        return project
+
+    async def update_onboarding(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, data: IdeaOnboardingUpdate) -> Project:
+        async with self.session.begin():
+            project = await self._project(project_id)
+            if project.project_type != "idea":
+                raise HTTPException(status_code=404, detail="Idea project not found")
+            membership = await self._membership(project_id, actor.user_id, active_only=True)
+            self.policy.require(self.policy.can_edit(membership))
+            changes = data.model_dump(exclude_unset=True, exclude={"confirm"})
+            if "data" in changes:
+                changes["data_context"] = changes.pop("data")
+            for field, value in changes.items():
+                setattr(project, field, value)
+            confirmed = dict(project.confirmed_fields or {})
+            for field in data.confirm:
+                confirmed[field] = "confirmed"
+            project.confirmed_fields = confirmed
+            project.onboarding_status = onboarding_status(project)
+            await self._audit(actor, "project.onboarding_updated", project.id, project.id, "project", {"fields": sorted(changes), "confirmed": sorted(data.confirm)})
         return project
 
     async def get_for_user(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> tuple[Project, ProjectMember | None]:

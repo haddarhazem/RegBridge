@@ -8,6 +8,8 @@ ProjectType = Literal["idea", "startup_in_creation", "existing_startup"]
 ProjectVisibility = Literal["private", "authenticated", "public"]
 MemberRole = Literal["owner", "founder", "admin", "member", "viewer"]
 MembershipStatus = Literal["invited", "active", "revoked"]
+OnboardingField = Literal["activity", "sector", "technology", "data", "market", "location"]
+OnboardingStatus = Literal["in_progress", "complete"]
 
 
 class ProjectCreate(BaseModel):
@@ -22,6 +24,24 @@ class ProjectCreate(BaseModel):
     target_market: str = "France"
     language: str = "fr"
     visibility: ProjectVisibility = "private"
+
+
+class IdeaProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=255)
+
+
+class IdeaOnboardingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    activity: str | None = Field(default=None, max_length=500)
+    sector: str | None = Field(default=None, max_length=160)
+    technology: str | None = Field(default=None, max_length=500)
+    data: str | None = Field(default=None, max_length=500)
+    target_market: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=160)
+    confirm: list[OnboardingField] = Field(default_factory=list, max_length=6)
 
 
 class ProjectUpdate(BaseModel):
@@ -50,6 +70,25 @@ class ProjectResponse(BaseModel):
     target_market: str | None = None
     language: str | None = None
     owner_user_id: uuid.UUID | None = None
+    activity: str | None = None
+    sector: str | None = None
+    technology: str | None = None
+    data: str | None = None
+    location: str | None = None
+    onboarding_status: OnboardingStatus | None = None
+    confirmed_fields: list[str] = Field(default_factory=list)
+
+
+class OnboardingQuestion(BaseModel):
+    field: OnboardingField
+    question: str
+
+
+class IdeaOnboardingResponse(BaseModel):
+    project_id: uuid.UUID
+    status: OnboardingStatus
+    confirmed_fields: list[OnboardingField]
+    next_questions: list[OnboardingQuestion]
 
 
 class ProjectMemberInvite(BaseModel):

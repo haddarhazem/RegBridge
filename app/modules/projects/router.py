@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
-from app.modules.projects.schemas import ProjectCreate, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
+from app.modules.projects.onboarding import confirmed_fields, next_questions
+from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
 from app.modules.projects.service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -32,6 +33,13 @@ def project_response(project, membership) -> ProjectResponse:
         target_market=project.target_market,
         language=project.language,
         owner_user_id=project.owner_user_id,
+        activity=getattr(project, "activity", None),
+        sector=getattr(project, "sector", None),
+        technology=getattr(project, "technology", None),
+        data=getattr(project, "data_context", None),
+        location=getattr(project, "location", None),
+        onboarding_status=getattr(project, "onboarding_status", None),
+        confirmed_fields=confirmed_fields(project) if hasattr(project, "confirmed_fields") else [],
     )
 
 
@@ -41,10 +49,38 @@ async def create_project(data: ProjectCreate, principal: Principal, session: Ses
     return project_response(project, True)
 
 
+@router.post("/ideas", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+async def create_idea_project(data: IdeaProjectCreate, principal: Principal, session: Session) -> ProjectResponse:
+    project = await ProjectService(session).create_idea(principal, data)
+    return project_response(project, True)
+
+
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: uuid.UUID, principal: Principal, session: Session) -> ProjectResponse:
     project, membership = await ProjectService(session).get_for_user(principal, project_id)
     return project_response(project, membership)
+
+
+@router.get("/{project_id}/onboarding", response_model=IdeaOnboardingResponse)
+async def get_onboarding(project_id: uuid.UUID, principal: Principal, session: Session) -> IdeaOnboardingResponse:
+    project = await ProjectService(session).get_idea_for_user(principal, project_id)
+    return IdeaOnboardingResponse(
+        project_id=project.id,
+        status=project.onboarding_status,
+        confirmed_fields=confirmed_fields(project),
+        next_questions=next_questions(project),
+    )
+
+
+@router.patch("/{project_id}/onboarding", response_model=IdeaOnboardingResponse)
+async def update_onboarding(project_id: uuid.UUID, data: IdeaOnboardingUpdate, principal: Principal, session: Session) -> IdeaOnboardingResponse:
+    project = await ProjectService(session).update_onboarding(principal, project_id, data)
+    return IdeaOnboardingResponse(
+        project_id=project.id,
+        status=project.onboarding_status,
+        confirmed_fields=confirmed_fields(project),
+        next_questions=next_questions(project),
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

@@ -47,6 +47,12 @@ class AuthorizedContext(BaseModel):
     project_type: str | None = Field(default=None, max_length=40)
     country_code: str | None = Field(default=None, max_length=2)
     user_goal: str | None = Field(default=None, max_length=2000)
+    activity: str | None = Field(default=None, max_length=500)
+    sector: str | None = Field(default=None, max_length=160)
+    technology: str | None = Field(default=None, max_length=500)
+    data_context: str | None = Field(default=None, max_length=500)
+    target_market: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=160)
 
 
 class AgentRequest(BaseModel):
