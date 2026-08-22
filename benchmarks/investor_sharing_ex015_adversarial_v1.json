@@ -1,0 +1,5 @@
+{
+  "experiment":"EX-015-adversarial","scenarios":[
+    {"scenario_id":"A01","mutation":"wrong recipient accepted"},{"scenario_id":"A02","mutation":"wrong project accepted"},{"scenario_id":"A03","mutation":"newer version accepted without grant"},{"scenario_id":"A04","mutation":"score grant exposes evidence"},{"scenario_id":"A05","mutation":"profile grant exposes private contract"},{"scenario_id":"A06","mutation":"revoked grant remains active"},{"scenario_id":"A07","mutation":"bundle evolution exposes new resource"},{"scenario_id":"A08","mutation":"cross-project resource ID accepted"},{"scenario_id":"A09","mutation":"unauthorized grant creator accepted"},{"scenario_id":"A10","mutation":"grant IDOR accepted"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "experiment":"EX-015","rq":"RQ-015","candidate_neutral":true,
+  "scenarios":[
+    {"scenario_id":"S01","resource":"profile_revision","recipient":"U2","expected_allowed":["U2:S01"],"expected_denied":["U3:S01"]},
+    {"scenario_id":"S02","resource":"compliance_score","recipient":"U2","expected_allowed":["U2:S02"]},
+    {"scenario_id":"S03","resource":"document_version_v1","recipient":"U2","expected_allowed":["U2:V1"],"expected_denied":["U2:V2"]},
+    {"scenario_id":"S04","resource":"two_resources","recipient":"U2/U3","expected_allowed":["U2:profile","U3:score"],"expected_denied":["U2:score","U3:profile"]},
+    {"scenario_id":"S05","resource":"active_grant","operation":"revoke","expected_allowed_before":true,"expected_allowed_after":false},
+    {"scenario_id":"S06","resource":"document_version","operation":"publish_v2","expected_allowed":["V1"],"expected_denied":["V2"]},
+    {"scenario_id":"S07","resource":"document_v1","expected_allowed":["V1"],"expected_denied":["sibling","V2"]},
+    {"scenario_id":"S08","resource":"compliance_score","expected_allowed":["score"],"expected_denied":["evidence_document"]},
+    {"scenario_id":"S09","resource":"public_profile","expected_allowed":["public_fields"],"expected_denied":[]},
+    {"scenario_id":"S10","resource":"project_membership","expected_allowed":["member"],"expected_denied":["unrelated"]},
+    {"scenario_id":"S11","resource":"grant_history","operation":"revoke","expected_allowed":["audit_history"],"expected_denied":["future_access"]},
+    {"scenario_id":"S12","resource":"allowlisted_resource_registry","operation":"add_type","expected_allowed":["new_explicit_type"],"expected_denied":["arbitrary_type"]}
+  ]
+}
