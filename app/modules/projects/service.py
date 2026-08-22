@@ -12,7 +12,7 @@ from app.modules.projects.authorization import ProjectAuthorizationPolicy
 from app.modules.projects.facts import extract_project_facts
 from app.modules.projects.models import Project, ProjectFact, ProjectMember
 from app.modules.projects.onboarding import onboarding_status
-from app.modules.projects.schemas import IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectMemberInvite, ProjectMemberUpdate, ProjectUpdate
+from app.modules.projects.schemas import IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectLifecycleHistoryResponse, ProjectMemberInvite, ProjectMemberUpdate, ProjectUpdate
 
 
 class ProjectService:
@@ -93,8 +93,6 @@ class ProjectService:
 
     async def list_facts(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> list[ProjectFact]:
         project = await self._project(project_id)
-        if project.project_type != "idea":
-            raise HTTPException(status_code=404, detail="Idea project not found")
         membership = await self._membership(project_id, actor.user_id, active_only=True)
         self.policy.require(membership is not None)
         return list((await self.session.scalars(select(ProjectFact).where(ProjectFact.project_id == project_id).order_by(ProjectFact.created_at, ProjectFact.id))).all())
@@ -120,8 +118,6 @@ class ProjectService:
 
     async def _fact_for_editor(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID) -> ProjectFact:
         project = await self._project(project_id)
-        if project.project_type != "idea":
-            raise HTTPException(status_code=404, detail="Idea project not found")
         membership = await self._membership(project_id, actor.user_id, active_only=True)
         self.policy.require(self.policy.can_edit(membership))
         fact = await self.session.scalar(select(ProjectFact).where(ProjectFact.id == fact_id, ProjectFact.project_id == project_id))
@@ -182,6 +178,34 @@ class ProjectService:
         if not self.policy.can_view(project, membership):
             raise HTTPException(status_code=404, detail="Project not found")
         return project, membership
+
+    async def transition_project(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, target_type: str) -> Project:
+        allowed = {"idea": "startup_in_creation", "startup_in_creation": "existing_startup"}
+        if target_type not in {"idea", "startup_in_creation", "existing_startup"}:
+            raise HTTPException(status_code=422, detail="Unknown project lifecycle type")
+        if self.session.in_transaction():
+            await self.session.commit()
+        async with self.session.begin():
+            project = await self.session.scalar(select(Project).where(Project.id == project_id).with_for_update())
+            membership = await self._membership(project_id, actor.user_id, active_only=True)
+            self.policy.require(self.policy.can_edit(membership))
+            if project is None:
+                raise HTTPException(status_code=404, detail="Project not found")
+            if target_type == project.project_type:
+                return project
+            if allowed.get(project.project_type) != target_type:
+                raise HTTPException(status_code=409, detail="Invalid project lifecycle transition")
+            previous_type = project.project_type
+            project.project_type = target_type
+            await self._audit(actor, "project.lifecycle_transition", project.id, project.id, "project", {"from_type": previous_type, "to_type": target_type})
+            await self.session.flush()
+        return project
+
+    async def lifecycle_history(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> list[AuditLog]:
+        await self._project(project_id)
+        membership = await self._membership(project_id, actor.user_id, active_only=True)
+        self.policy.require(membership is not None)
+        return list((await self.session.scalars(select(AuditLog).where(AuditLog.project_id == project_id, AuditLog.action == "project.lifecycle_transition").order_by(AuditLog.created_at, AuditLog.id))).all())
 
     async def update(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, data: ProjectUpdate) -> Project:
         async with self.session.begin():

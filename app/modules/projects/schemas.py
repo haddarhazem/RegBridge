@@ -61,6 +61,21 @@ class ProjectUpdate(BaseModel):
     visibility: ProjectVisibility | None = None
 
 
+class ProjectLifecycleTransition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_type: ProjectType
+
+
+class ProjectLifecycleHistoryResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    from_type: ProjectType
+    to_type: ProjectType
+    created_at: datetime
+
+
 class ProjectResponse(BaseModel):
     id: uuid.UUID
     project_type: ProjectType

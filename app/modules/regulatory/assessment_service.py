@@ -40,8 +40,6 @@ class RegulatoryAssessmentService:
         ))
         if project is None or membership is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        if project.project_type != "idea":
-            raise HTTPException(status_code=404, detail="Idea project not found")
         return project
 
     async def _trusted_snapshot_payload(self, project: Project) -> list[dict]:

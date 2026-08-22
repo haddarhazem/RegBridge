@@ -20,7 +20,7 @@ Principal = Annotated[AuthenticatedPrincipal, Depends(get_authenticated_principa
 def response(roadmap, items) -> LaunchRoadmapResponse:
     return LaunchRoadmapResponse(
         id=roadmap.id, project_id=roadmap.project_id, regulatory_assessment_id=roadmap.regulatory_assessment_id,
-        version=roadmap.version, status=roadmap.status,
+        version=roadmap.version, status=roadmap.status, purpose=roadmap.purpose,
         items=[RoadmapItemResponse(
             id=item.id, roadmap_id=item.roadmap_id, item_type=item.item_type, title=item.title,
             justification=item.justification, priority_order=item.priority_order, status=item.status,

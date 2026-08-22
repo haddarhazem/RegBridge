@@ -46,7 +46,7 @@ class LaunchRoadmapService:
             await self._authorize(actor, project_id)
             locked = await self.session.scalar(select(RegulatoryAssessment).where(RegulatoryAssessment.id == assessment_id).with_for_update())
             version = (await self.session.scalar(select(func.max(LaunchRoadmap.version)).where(LaunchRoadmap.project_id == project_id)) or 0) + 1
-            roadmap = LaunchRoadmap(project_id=project_id, regulatory_assessment_id=assessment_id, version=version, status="active")
+            roadmap = LaunchRoadmap(project_id=project_id, regulatory_assessment_id=assessment_id, version=version, status="active", purpose="creation")
             self.session.add(roadmap)
             await self.session.flush()
             self.session.add_all([LaunchRoadmapItem(roadmap_id=roadmap.id, **item) for item in items])

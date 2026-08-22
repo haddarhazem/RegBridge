@@ -8,7 +8,7 @@ from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.onboarding import confirmed_fields, next_questions
-from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectFactCorrection, ProjectFactResponse, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
+from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectFactCorrection, ProjectFactResponse, ProjectLifecycleHistoryResponse, ProjectLifecycleTransition, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
 from app.modules.projects.service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -94,6 +94,18 @@ async def update_onboarding(project_id: uuid.UUID, data: IdeaOnboardingUpdate, p
         confirmed_fields=confirmed_fields(project),
         next_questions=next_questions(project),
     )
+
+
+@router.post("/{project_id}/transition", response_model=ProjectResponse)
+async def transition_project(project_id: uuid.UUID, data: ProjectLifecycleTransition, principal: Principal, session: Session) -> ProjectResponse:
+    project = await ProjectService(session).transition_project(principal, project_id, data.target_type)
+    return project_response(project, True)
+
+
+@router.get("/{project_id}/lifecycle-history", response_model=list[ProjectLifecycleHistoryResponse])
+async def lifecycle_history(project_id: uuid.UUID, principal: Principal, session: Session) -> list[ProjectLifecycleHistoryResponse]:
+    records = await ProjectService(session).lifecycle_history(principal, project_id)
+    return [ProjectLifecycleHistoryResponse(id=record.id, project_id=record.project_id, actor_user_id=record.actor_user_id, from_type=record.metadata_json["from_type"], to_type=record.metadata_json["to_type"], created_at=record.created_at) for record in records]
 
 
 @router.post("/{project_id}/facts/infer", response_model=list[ProjectFactResponse])

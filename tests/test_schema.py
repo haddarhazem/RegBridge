@@ -41,7 +41,7 @@ def test_alembic_has_scrum187_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum190_roadmaps"]
+    assert heads == ["scrum191_roadmap_purpose"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 

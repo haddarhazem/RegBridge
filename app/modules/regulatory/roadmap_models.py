@@ -16,6 +16,7 @@ class LaunchRoadmap(Base):
         UniqueConstraint("project_id", "version", name="uq_launch_roadmaps_project_version"),
         Index("ix_launch_roadmaps_project_created", "project_id", "created_at"),
         CheckConstraint("status IN ('active', 'archived')", name="launch_roadmaps_status"),
+        CheckConstraint("purpose IN ('creation', 'compliance')", name="launch_roadmaps_purpose"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -23,6 +24,7 @@ class LaunchRoadmap(Base):
     regulatory_assessment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("regulatory_assessments.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False, server_default="creation")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

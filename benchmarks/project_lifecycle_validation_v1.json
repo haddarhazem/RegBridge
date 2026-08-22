@@ -1,0 +1,20 @@
+{
+  "benchmark_id": "project_lifecycle_validation_v1",
+  "ticket": "SCRUM-191",
+  "research_question": "RQ-009",
+  "invariants_frozen_before_evaluation": ["identity_continuity", "history_preservation", "authorization_correctness", "reference_integrity", "audit_completeness", "transition_correctness", "idempotency_concurrency", "roadmap_semantic_separation"],
+  "scenarios": [
+    {"id":"T01","description":"idea to startup_in_creation","from":"idea","to":"startup_in_creation","artifacts":[]},
+    {"id":"T02","description":"startup_in_creation to existing_startup","from":"startup_in_creation","to":"existing_startup","artifacts":[]},
+    {"id":"T03","description":"idea with confirmed facts","from":"idea","to":"startup_in_creation","artifacts":["facts"]},
+    {"id":"T04","description":"idea with pending and rejected facts","from":"idea","to":"startup_in_creation","artifacts":["facts"]},
+    {"id":"T05","description":"idea with regulatory assessment history","from":"idea","to":"startup_in_creation","artifacts":["assessments"]},
+    {"id":"T06","description":"idea with multiple assessment versions","from":"idea","to":"startup_in_creation","artifacts":["assessments","snapshots"]},
+    {"id":"T07","description":"idea with progressed creation roadmap","from":"idea","to":"startup_in_creation","artifacts":["roadmaps"]},
+    {"id":"T08","description":"idea with documents","from":"idea","to":"startup_in_creation","artifacts":["documents"]},
+    {"id":"T09","description":"idea with multiple authorized members","from":"idea","to":"startup_in_creation","artifacts":["members"]},
+    {"id":"T10","description":"cross-user transition attempt","from":"idea","to":"startup_in_creation","artifacts":["members"],"unauthorized":true},
+    {"id":"T11","description":"invalid backward transition","from":"existing_startup","to":"idea","artifacts":[]},
+    {"id":"T12","description":"two near-simultaneous same transitions","from":"idea","to":"startup_in_creation","artifacts":["members"],"concurrent":true}
+  ]
+}

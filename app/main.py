@@ -6,6 +6,7 @@ from app.api.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.request_id import RequestIdMiddleware
+from app.db import models as _models  # noqa: F401 - register all ORM models deterministically
 from app.modules.ai.router import router as conversations_router
 from app.modules.identity.router import router as identity_router
 from app.modules.projects.router import router as projects_router

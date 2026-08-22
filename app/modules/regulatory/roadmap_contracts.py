@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 RoadmapItemType = Literal["obligation", "recommendation", "uncertainty"]
 RoadmapItemStatus = Literal["pending", "in_progress", "completed", "skipped"]
+RoadmapPurpose = Literal["creation", "compliance"]
 
 
 class RoadmapItemResponse(BaseModel):
@@ -37,6 +38,7 @@ class LaunchRoadmapResponse(BaseModel):
     regulatory_assessment_id: uuid.UUID
     version: int
     status: str
+    purpose: RoadmapPurpose
     items: list[RoadmapItemResponse]
     created_at: datetime
 
