@@ -31,6 +31,13 @@ EXPECTED_TABLES = {
     "startup_profile_revisions",
     "contract_analyses",
     "contract_findings",
+    "compliance_frameworks",
+    "compliance_framework_versions",
+    "compliance_control_definitions",
+    "project_framework_adoptions",
+    "project_compliance_controls",
+    "compliance_evidence",
+    "compliance_control_evidence_links",
 }
 
 
@@ -46,7 +53,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum193_contract_analysis"]
+    assert heads == ["scrum194_compliance"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 

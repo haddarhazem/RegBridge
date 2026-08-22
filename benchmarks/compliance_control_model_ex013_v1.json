@@ -1,0 +1,22 @@
+{
+  "benchmark_id": "compliance_control_model_ex013_v1",
+  "experiment": "EX-013",
+  "research_question": "RQ-012",
+  "frozen": true,
+  "candidate_neutral": true,
+  "invariants": ["framework_version_integrity", "historical_reproducibility", "no_silent_framework_mutation", "evidence_revocation_safety", "historical_evidence_preservation", "source_integrity", "project_isolation", "framework_isolation", "extensibility", "applicability_preservation", "explicit_upgrade", "authorization"],
+  "scenarios": [
+    {"scenario_id":"C01","operation":"adopt","framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"],"project":"P1","expected":{"framework_version_correct":true,"history_reproducible":true,"upgrade_correct":true}},
+    {"scenario_id":"C02","operation":"adopt","framework":"AI Act","version":"V1","control_keys":["AIA-SYN-001"],"project":"P1","expected":{"framework_version_correct":true,"framework_isolation":true}},
+    {"scenario_id":"C03","operation":"adopt_both","frameworks":[{"framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"]},{"framework":"AI Act","version":"V1","control_keys":["AIA-SYN-001"]}],"project":"P1","expected":{"framework_isolation":true,"project_isolation":true}},
+    {"scenario_id":"C04","operation":"document_evidence","framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"],"project":"P1","evidence":{"kind":"document","document_version":"D1/V1","source_ref":"source:synthetic:gdpr-1"},"expected":{"evidence_active":true,"source_integrity":true}},
+    {"scenario_id":"C05","operation":"declaration_evidence","framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"],"project":"P1","evidence":{"kind":"declaration","declaration_type":"policy_acknowledgement","value":"declared","author":"P1-owner"},"expected":{"evidence_active":true,"source_integrity":true}},
+    {"scenario_id":"C06","operation":"revoke_evidence","framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"],"project":"P1","evidence":{"kind":"document","document_version":"D1/V1"},"expected":{"evidence_active":false,"historical_evidence_preserved":true}},
+    {"scenario_id":"C07","operation":"publish_new_version","framework":"GDPR","version":"V2","prior_version":"V1","project":"P1","expected":{"framework_version_correct":true,"history_reproducible":true,"applicability_preserved":true}},
+    {"scenario_id":"C08","operation":"explicit_upgrade","framework":"GDPR","version":"V2","prior_version":"V1","project":"P1","expected":{"framework_version_correct":true,"upgrade_correct":true,"history_reproducible":true}},
+    {"scenario_id":"C09","operation":"historical_query","framework":"GDPR","version":"V1","project":"P1","evidence":{"kind":"document","document_version":"D1/V1"},"expected":{"history_reproducible":true,"historical_evidence_preserved":true}},
+    {"scenario_id":"C10","operation":"source_reference","framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"],"project":"P1","source_ref":"source:synthetic:gdpr-1","expected":{"source_integrity":true}},
+    {"scenario_id":"C11","operation":"project_isolation","framework":"GDPR","version":"V1","control_keys":["GDPR-SYN-001"],"projects":["P1","P2"],"evidence":{"kind":"document","document_version":"D1/V1","project":"P1"},"expected":{"project_isolation":true}},
+    {"scenario_id":"C12","operation":"new_framework","framework":"Synthetic Future","version":"V1","control_keys":["FUTURE-SYN-001","FUTURE-SYN-002"],"project":"P1","expected":{"extensibility":true,"framework_isolation":true}}
+  ]
+}

@@ -1,1 +1,1 @@
-"""Compliance domain boundary; business behavior is planned."""
+"""Project compliance tracking and versioned framework reference data."""

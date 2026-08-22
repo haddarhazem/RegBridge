@@ -1,0 +1,16 @@
+{
+  "benchmark_id":"compliance_control_model_ex013_adversarial_v1",
+  "experiment":"EX-013",
+  "frozen":true,
+  "candidate_neutral":true,
+  "scenarios":[
+    {"scenario_id":"A01","operation":"revoke_then_count","framework":"GDPR","version":"V1","project":"P1","evidence":{"kind":"document","document_version":"D1/V1"},"expected":{"evidence_active":false,"historical_evidence_preserved":true}},
+    {"scenario_id":"A02","operation":"wrong_framework_version","framework":"GDPR","version":"V2","control_framework_version":"AI Act/V1","project":"P1","expected":{"framework_version_correct":false}},
+    {"scenario_id":"A03","operation":"remove_control_in_v2","framework":"GDPR","version":"V2","prior_version":"V1","control_keys":["GDPR-SYN-001"],"project":"P1","expected":{"history_reproducible":true,"applicability_preserved":true}},
+    {"scenario_id":"A04","operation":"same_key_two_frameworks","frameworks":[{"framework":"GDPR","version":"V1","control_keys":["SHARED-001"]},{"framework":"AI Act","version":"V1","control_keys":["SHARED-001"]}],"project":"P1","expected":{"framework_isolation":true}},
+    {"scenario_id":"A05","operation":"upgrade_with_evidence","framework":"GDPR","version":"V2","prior_version":"V1","project":"P1","evidence":{"kind":"document","document_version":"D1/V1"},"expected":{"upgrade_correct":true,"history_reproducible":true,"historical_evidence_preserved":true}},
+    {"scenario_id":"A06","operation":"cross_project_evidence","framework":"GDPR","version":"V1","project":"P2","evidence":{"kind":"document","document_version":"D1/V1","project":"P1"},"expected":{"project_isolation":false}},
+    {"scenario_id":"A07","operation":"multi_upgrade_history","framework":"GDPR","version":"V3","prior_version":"V2","project":"P1","expected":{"history_reproducible":true,"upgrade_correct":true}},
+    {"scenario_id":"A08","operation":"unknown_framework_categories","framework":"Future X","version":"V1","control_keys":["X-NEW-001","X-NEW-002"],"project":"P1","expected":{"extensibility":true,"framework_isolation":true}}
+  ]
+}
