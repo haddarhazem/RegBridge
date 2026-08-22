@@ -1,0 +1,18 @@
+{
+  "experiment": "EX-014",
+  "rq": "RQ-013",
+  "scenarios": [
+    {"scenario_id":"S01","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]},{"id":"c2","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e2"]}]},
+    {"scenario_id":"S02","framework":"GDPR","controls":[{"id":"c1","status":"NOT_STARTED","applicability":"APPLICABLE","evidence":[]},{"id":"c2","status":"NOT_SATISFIED","applicability":"APPLICABLE","evidence":[]}]},
+    {"scenario_id":"S03","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]},{"id":"c2","status":"IN_PROGRESS","applicability":"APPLICABLE","evidence":[]},{"id":"c3","status":"NOT_SATISFIED","applicability":"APPLICABLE","evidence":[]}]},
+    {"scenario_id":"S04","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]},{"id":"c2","status":"NOT_APPLICABLE","applicability":"NOT_APPLICABLE","evidence":[]}]},
+    {"scenario_id":"S05","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":[]}]},
+    {"scenario_id":"S06","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1:REVOKED"]}]},
+    {"scenario_id":"S07","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1","e2"]}]},
+    {"scenario_id":"S08","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1","e2"]}]},
+    {"scenario_id":"S09","framework":"GDPR","controls":[{"id":"critical","status":"NOT_SATISFIED","applicability":"APPLICABLE","evidence":[]},{"id":"minor","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]}]},
+    {"scenario_id":"S10","framework":"GDPR+EU_AI_ACT","controls":[{"id":"gdpr-1","framework":"GDPR","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]},{"id":"ai-1","framework":"EU_AI_ACT","status":"NOT_SATISFIED","applicability":"APPLICABLE","evidence":[]}]},
+    {"scenario_id":"S11","framework":"GDPR+EU_AI_ACT","controls":[{"id":"gdpr-1","framework":"GDPR","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]},{"id":"gdpr-2","framework":"GDPR","status":"NOT_SATISFIED","applicability":"APPLICABLE","evidence":[]},{"id":"ai-1","framework":"EU_AI_ACT","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e2"]}]},
+    {"scenario_id":"S12","framework":"GDPR","controls":[{"id":"c1","status":"SATISFIED","applicability":"APPLICABLE","evidence":["e1"]}]}
+  ]
+}

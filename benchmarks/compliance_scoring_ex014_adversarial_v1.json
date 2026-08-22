@@ -1,0 +1,6 @@
+{
+  "experiment":"EX-014-adversarial",
+  "scenarios":[
+    {"scenario_id":"A01","mutation":"revoked evidence accidentally counted"},{"scenario_id":"A02","mutation":"NOT_APPLICABLE included in denominator"},{"scenario_id":"A03","mutation":"same control represented twice"},{"scenario_id":"A04","mutation":"wrong framework version"},{"scenario_id":"A05","mutation":"zero/negative/invalid weight"},{"scenario_id":"A06","mutation":"method version changed after score creation"},{"scenario_id":"A07","mutation":"framework upgrade after historical score"},{"scenario_id":"A08","mutation":"cross-project evidence/control"}
+  ]
+}

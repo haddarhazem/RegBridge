@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.modules.compliance.schemas import AdoptionCreate, AdoptionResponse, ControlStatePatch, EvidenceCreate, EvidenceResponse, EvidenceRevoke, FrameworkResponse, FrameworkVersionResponse, ProjectControlResponse
+from app.modules.compliance.schemas import AdoptionCreate, AdoptionResponse, ControlStatePatch, EvidenceCreate, EvidenceResponse, EvidenceRevoke, FrameworkResponse, FrameworkVersionResponse, ProjectControlResponse, ScoreCalculateRequest, ScoreResponse
 from app.modules.compliance.service import ComplianceService
+from app.modules.compliance.score_service import ComplianceScoreService
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
 
@@ -56,3 +57,23 @@ async def revoke_evidence(project_id: uuid.UUID, evidence_id: uuid.UUID, data: E
 @router.get("/projects/{project_id}/compliance/controls/{control_id}/evidence", response_model=list[EvidenceResponse])
 async def control_evidence(project_id: uuid.UUID, control_id: uuid.UUID, principal: Principal, session: Session) -> list[EvidenceResponse]:
     return [EvidenceResponse.model_validate(item) for item in await ComplianceService(session).evidence_for_control(principal, project_id, control_id)]
+
+
+@router.post("/projects/{project_id}/compliance/scores", response_model=ScoreResponse, status_code=status.HTTP_201_CREATED)
+async def calculate_score(project_id: uuid.UUID, data: ScoreCalculateRequest, principal: Principal, session: Session) -> ScoreResponse:
+    return ScoreResponse.model_validate(await ComplianceScoreService(session).calculate_current(principal, project_id, data.framework_version_id, data.method_version))
+
+
+@router.get("/projects/{project_id}/compliance/scores/latest", response_model=ScoreResponse)
+async def latest_score(project_id: uuid.UUID, principal: Principal, session: Session, framework_version_id: uuid.UUID | None = None) -> ScoreResponse:
+    return ScoreResponse.model_validate(await ComplianceScoreService(session).latest(principal, project_id, framework_version_id))
+
+
+@router.get("/projects/{project_id}/compliance/scores/history", response_model=list[ScoreResponse])
+async def score_history(project_id: uuid.UUID, principal: Principal, session: Session, framework_version_id: uuid.UUID | None = None) -> list[ScoreResponse]:
+    return [ScoreResponse.model_validate(item) for item in await ComplianceScoreService(session).history(principal, project_id, framework_version_id)]
+
+
+@router.get("/projects/{project_id}/compliance/scores/{score_id}", response_model=ScoreResponse)
+async def score_breakdown(project_id: uuid.UUID, score_id: uuid.UUID, principal: Principal, session: Session) -> ScoreResponse:
+    return ScoreResponse.model_validate(await ComplianceScoreService(session).get(principal, project_id, score_id))

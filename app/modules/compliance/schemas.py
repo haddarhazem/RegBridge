@@ -106,3 +106,26 @@ class AdoptionResponse(BaseModel):
     adopted_by_user_id: uuid.UUID
     adopted_at: datetime
     superseded_at: datetime | None
+
+
+class ScoreCalculateRequest(BaseModel):
+    framework_version_id: uuid.UUID | None = None
+    method_version: str = "v1"
+
+
+class ScoreResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    project_id: uuid.UUID
+    framework_version_id: uuid.UUID | None
+    method_key: str
+    method_version: str
+    evidence_policy_version: str
+    rounding_policy: str
+    calculated_at: datetime
+    numerator: int
+    denominator: int
+    score: float | None
+    evidence_coverage: float | None
+    input_snapshot: dict
+    explanation: dict

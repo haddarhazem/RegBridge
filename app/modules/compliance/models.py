@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -123,3 +123,29 @@ class ControlEvidenceLink(Base):
     evidence_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("compliance_evidence.id", ondelete="RESTRICT"), nullable=False)
     attached_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     attached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ComplianceScoreCalculation(Base):
+    """Immutable, explainable result of a versioned deterministic calculation."""
+    __tablename__ = "compliance_score_calculations"
+    __table_args__ = (
+        Index("ix_compliance_score_calculations_project_created", "project_id", "calculated_at"),
+        Index("ix_compliance_score_calculations_project_framework", "project_id", "framework_version_id"),
+        CheckConstraint("denominator >= 0", name="compliance_score_calculations_denominator_nonnegative"),
+        CheckConstraint("numerator >= 0", name="compliance_score_calculations_numerator_nonnegative"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    framework_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("compliance_framework_versions.id", ondelete="RESTRICT"))
+    method_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    method_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    evidence_policy_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    rounding_policy: Mapped[str] = mapped_column(String(80), nullable=False)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    numerator: Mapped[int] = mapped_column(Integer, nullable=False)
+    denominator: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[float | None] = mapped_column(Numeric(8, 2))
+    evidence_coverage: Mapped[float | None] = mapped_column(Numeric(8, 2))
+    input_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    explanation: Mapped[dict] = mapped_column(JSONB, nullable=False)

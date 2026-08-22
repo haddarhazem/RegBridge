@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import get_settings
 from app.modules.audit import AuditLog
-from app.modules.compliance.models import ComplianceControlDefinition, ComplianceEvidence, ComplianceFramework, ComplianceFrameworkVersion, ControlEvidenceLink, ProjectComplianceControl, ProjectFrameworkAdoption
-from app.modules.compliance.schemas import AdoptionCreate, EvidenceCreate, EvidenceRevoke
+from app.modules.compliance.models import ComplianceControlDefinition, ComplianceEvidence, ComplianceFramework, ComplianceFrameworkVersion, ComplianceScoreCalculation, ControlEvidenceLink, ProjectComplianceControl, ProjectFrameworkAdoption
+from app.modules.compliance.schemas import AdoptionCreate, ControlStatePatch, EvidenceCreate, EvidenceRevoke
 from app.modules.compliance.service import ComplianceService
+from app.modules.compliance.score_service import ComplianceScoreService
 from app.modules.documents.models import Document, DocumentVersion
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.identity.models import User
@@ -79,6 +80,7 @@ async def cleanup(factory, ids):
         await session.execute(delete(ControlEvidenceLink).where(ControlEvidenceLink.project_control_id.in_(select(ProjectComplianceControl.id).where(ProjectComplianceControl.project_id.in_([project_id, other_project_id])))))
         await session.execute(delete(ComplianceEvidence).where(ComplianceEvidence.project_id.in_([project_id, other_project_id])))
         await session.execute(delete(ProjectComplianceControl).where(ProjectComplianceControl.project_id.in_([project_id, other_project_id])))
+        await session.execute(delete(ComplianceScoreCalculation).where(ComplianceScoreCalculation.project_id.in_([project_id, other_project_id])))
         await session.execute(delete(ProjectFrameworkAdoption).where(ProjectFrameworkAdoption.project_id.in_([project_id, other_project_id])))
         await session.execute(delete(ComplianceControlDefinition).where(ComplianceControlDefinition.framework_version_id.in_([version1_id, version2_id])))
         await session.execute(delete(ComplianceFrameworkVersion).where(ComplianceFrameworkVersion.id.in_([version1_id, version2_id])))
@@ -138,5 +140,32 @@ async def test_cross_user_and_cross_project_evidence_are_denied(compliance_facto
                 await service.attach_evidence(other, project_id, EvidenceCreate(control_id=control.id, declaration_type="ack", declaration_value="no"))
             with pytest.raises(HTTPException):
                 await service.attach_evidence(owner, other_project_id, EvidenceCreate(control_id=control.id, document_version_id=document_version_id))
+    finally:
+        await cleanup(compliance_factory, ids)
+
+
+@pytest.mark.asyncio
+async def test_postgresql_score_snapshot_history_and_authorization(compliance_factory):
+    ids = await create_fixture(compliance_factory)
+    project_id, _, document_version_id, owner, other, _, version1_id, _ = ids
+    try:
+        async with compliance_factory() as session:
+            service = ComplianceService(session)
+            await service.adopt(owner, project_id, AdoptionCreate(framework_version_id=version1_id))
+            control = (await service.controls(owner, project_id))[0]
+            await service.update_control(owner, project_id, control.id, ControlStatePatch(status="SATISFIED"))
+            evidence = await service.attach_evidence(owner, project_id, EvidenceCreate(control_id=control.id, document_version_id=document_version_id))
+            first = await ComplianceScoreService(session).calculate_current(owner, project_id, version1_id)
+            await session.commit()
+            assert first.score == 100 and first.input_snapshot["controls"][0]["status"] == "SATISFIED"
+        async with compliance_factory() as session:
+            score_service = ComplianceScoreService(session)
+            old = await score_service.latest(owner, project_id, version1_id)
+            await ComplianceService(session).revoke_evidence(owner, project_id, evidence.id, EvidenceRevoke(reason="withdrawn"))
+            newer = await score_service.calculate_current(owner, project_id, version1_id)
+            await session.commit()
+            assert old.score == 100 and newer.score == 0 and old.explanation["evidence_used"]
+            with pytest.raises(HTTPException): await score_service.calculate_current(other, project_id, version1_id)
+            with pytest.raises(HTTPException): await score_service.history(other, project_id, version1_id)
     finally:
         await cleanup(compliance_factory, ids)

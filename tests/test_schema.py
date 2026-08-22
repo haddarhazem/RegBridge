@@ -38,6 +38,7 @@ EXPECTED_TABLES = {
     "project_compliance_controls",
     "compliance_evidence",
     "compliance_control_evidence_links",
+    "compliance_score_calculations",
 }
 
 
@@ -53,7 +54,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum194_compliance"]
+    assert heads == ["scrum195_scoring"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 
