@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.modules.documents.schemas import Classification, DocumentResponse, DocumentUploadResponse, DocumentVersionResponse, DocumentVisibility, ProcessingJobCreate, ProcessingJobResponse
+from app.modules.documents.contract_analysis_schemas import ContractAnalysisResponse, ContractFindingResponse, ContractObservationResponse
+from app.modules.documents.contract_analysis_service import ContractAnalysisService
 from app.modules.documents.service import DocumentService
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
@@ -43,6 +45,27 @@ def version_response(version) -> DocumentVersionResponse:
         sha256=version.sha256,
         malware_scan_status=version.malware_scan_status,
         created_at=version.created_at,
+    )
+
+
+def analysis_response(analysis) -> ContractAnalysisResponse:
+    return ContractAnalysisResponse(
+        id=analysis.id,
+        project_id=analysis.project_id,
+        document_id=analysis.document_id,
+        document_version_id=analysis.document_version_id,
+        strategy=analysis.strategy,
+        status=analysis.status,
+        provider=analysis.provider,
+        model=analysis.model,
+        error_code=analysis.error_code,
+        created_at=analysis.created_at,
+        findings=[],
+        observations=[ContractObservationResponse(id=finding.id, observation_index=finding.finding_index, suggested_category=finding.category, source_quote=finding.evidence_quote, document_version_id=finding.evidence_document_version_id, start_char=finding.evidence_start_char, end_char=finding.evidence_end_char) for finding in getattr(analysis, "findings", [])],
+        risks=[],
+        recommendations=[],
+        semantic_interpretation_available=False,
+        limitations=["Automated semantic risk and recommendation interpretation is not included because it could not be verified reliably."],
     )
 
 
@@ -88,3 +111,18 @@ async def delete_document(document_id: uuid.UUID, principal: Principal, session:
 async def create_processing_job(document_id: uuid.UUID, version_id: uuid.UUID, data: ProcessingJobCreate, principal: Principal, session: Session) -> ProcessingJobResponse:
     job = await DocumentService(session).create_processing_job(principal, document_id, version_id, data)
     return ProcessingJobResponse(id=job.id, document_version_id=job.document_version_id, job_type=job.job_type, idempotency_key=job.idempotency_key, status=job.status)
+
+
+@router.post("/documents/{document_id}/versions/{version_id}/analyses", response_model=ContractAnalysisResponse, status_code=status.HTTP_201_CREATED)
+async def analyze_contract(document_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session) -> ContractAnalysisResponse:
+    return analysis_response(await ContractAnalysisService(session).analyze(principal, document_id, version_id))
+
+
+@router.get("/contract-analyses/{analysis_id}", response_model=ContractAnalysisResponse)
+async def get_contract_analysis(analysis_id: uuid.UUID, principal: Principal, session: Session) -> ContractAnalysisResponse:
+    return analysis_response(await ContractAnalysisService(session).get(principal, analysis_id))
+
+
+@router.get("/documents/{document_id}/analyses", response_model=list[ContractAnalysisResponse])
+async def list_contract_analyses(document_id: uuid.UUID, principal: Principal, session: Session) -> list[ContractAnalysisResponse]:
+    return [analysis_response(item) for item in await ContractAnalysisService(session).list_for_document(principal, document_id)]

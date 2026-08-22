@@ -49,6 +49,7 @@ class DocumentVersion(Base):
     sha256: Mapped[str] = mapped_column(CHAR(64), nullable=False)
     malware_scan_status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="pending")
     extracted_text_location: Mapped[str | None] = mapped_column(Text)
+    extracted_text: Mapped[str | None] = mapped_column(Text)
     extraction_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
