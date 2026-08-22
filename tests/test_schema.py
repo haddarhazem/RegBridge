@@ -26,6 +26,9 @@ EXPECTED_TABLES = {
     "conversation_threads",
     "conversation_messages",
     "agent_runs",
+    "startup_profiles",
+    "startup_profile_fields",
+    "startup_profile_revisions",
 }
 
 
@@ -36,12 +39,12 @@ def test_single_metadata_contains_foundation_and_document_tables() -> None:
     assert "investor_profiles" not in Base.metadata.tables
 
 
-def test_alembic_has_scrum187_head() -> None:
+def test_alembic_has_current_head() -> None:
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum191_roadmap_purpose"]
+    assert heads == ["scrum192_startup_profiles"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 

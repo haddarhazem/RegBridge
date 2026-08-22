@@ -8,6 +8,8 @@ from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.onboarding import confirmed_fields, next_questions
+from app.modules.projects.profile_schemas import PublicStartupProfileResponse, StartupProfileFieldResponse, StartupProfileResponse, StartupProfileRevisionResponse, StartupProfilePatch
+from app.modules.projects.profile_service import StartupProfileService
 from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectFactCorrection, ProjectFactResponse, ProjectLifecycleHistoryResponse, ProjectLifecycleTransition, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
 from app.modules.projects.service import ProjectService
 
@@ -100,6 +102,38 @@ async def update_onboarding(project_id: uuid.UUID, data: IdeaOnboardingUpdate, p
 async def transition_project(project_id: uuid.UUID, data: ProjectLifecycleTransition, principal: Principal, session: Session) -> ProjectResponse:
     project = await ProjectService(session).transition_project(principal, project_id, data.target_type)
     return project_response(project, True)
+
+
+def startup_profile_response(project, profile, fields) -> StartupProfileResponse:
+    return StartupProfileResponse(
+        project_id=project.id,
+        project_type=project.project_type,
+        revision=profile.current_revision if profile is not None else 0,
+        fields=[StartupProfileFieldResponse(field_name=field.field_name, section=field.section, value=field.value, visibility=field.visibility) for field in fields],
+    )
+
+
+@router.get("/{project_id}/startup-profile", response_model=StartupProfileResponse)
+async def get_startup_profile(project_id: uuid.UUID, principal: Principal, session: Session) -> StartupProfileResponse:
+    project, profile, fields = await StartupProfileService(session).get_internal(principal, project_id)
+    return startup_profile_response(project, profile, fields)
+
+
+@router.patch("/{project_id}/startup-profile", response_model=StartupProfileResponse)
+async def update_startup_profile(project_id: uuid.UUID, data: StartupProfilePatch, principal: Principal, session: Session) -> StartupProfileResponse:
+    project, profile, fields = await StartupProfileService(session).update(principal, project_id, data)
+    return startup_profile_response(project, profile, fields)
+
+
+@router.get("/{project_id}/startup-profile/history", response_model=list[StartupProfileRevisionResponse])
+async def get_startup_profile_history(project_id: uuid.UUID, principal: Principal, session: Session) -> list[StartupProfileRevisionResponse]:
+    revisions = await StartupProfileService(session).history(principal, project_id)
+    return [StartupProfileRevisionResponse(revision=revision.revision_number, snapshot=revision.snapshot, changed_by_user_id=revision.changed_by_user_id, created_at=revision.created_at) for revision in revisions]
+
+
+@router.get("/{project_id}/public-profile", response_model=PublicStartupProfileResponse)
+async def get_public_startup_profile(project_id: uuid.UUID, session: Session) -> PublicStartupProfileResponse:
+    return PublicStartupProfileResponse(fields=await StartupProfileService(session).get_public(project_id))
 
 
 @router.get("/{project_id}/lifecycle-history", response_model=list[ProjectLifecycleHistoryResponse])
