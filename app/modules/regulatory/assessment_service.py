@@ -101,11 +101,12 @@ class RegulatoryAssessmentService:
         sources = list(agent_result.sources)
         verdict = agent_result.structured_payload.get("verification_verdict")
         warnings = list(agent_result.warnings)
-        obligations = [AssessmentConclusion(statement=value, category="obligation", source_refs=[str(item.get("point_id")) for item in evidence]) for value in agent_result.findings]
-        recommendations = [AssessmentConclusion(statement=value, category="recommendation", source_refs=[str(item.get("point_id")) for item in evidence]) for value in agent_result.recommendations]
-        uncertainties = [AssessmentConclusion(statement=value, category="uncertainty", source_refs=[]) for value in agent_result.missing_information]
+        obligations = [AssessmentConclusion(conclusion_id=f"obligation-{index}", statement=value, category="obligation", source_refs=[str(item.get("point_id")) for item in evidence]) for index, value in enumerate(agent_result.findings, 1)]
+        recommendations = [AssessmentConclusion(conclusion_id=f"recommendation-{index}", statement=value, category="recommendation", source_refs=[str(item.get("point_id")) for item in evidence]) for index, value in enumerate(agent_result.recommendations, 1)]
+        uncertainties = [AssessmentConclusion(conclusion_id=f"uncertainty-{index}", statement=value, category="uncertainty", source_refs=[]) for index, value in enumerate(agent_result.missing_information, 1)]
         if verdict != "pass":
-            uncertainties.extend(AssessmentConclusion(statement=value, category="uncertainty") for value in warnings[:10])
+            offset = len(uncertainties)
+            uncertainties.extend(AssessmentConclusion(conclusion_id=f"uncertainty-{offset + index}", statement=value, category="uncertainty") for index, value in enumerate(warnings[:10], 1))
         return AssessmentResult(answer=agent_result.answer or "", obligations=obligations, recommendations=recommendations, uncertainties=uncertainties, sources=sources), evidence
 
     async def generate(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, question: str) -> RegulatoryAssessment:
@@ -133,7 +134,7 @@ class RegulatoryAssessmentService:
             agent_run_id = payload.run_id
             reasons = [str(value) for value in payload.warnings]
         else:
-            result = AssessmentResult(uncertainties=[AssessmentConclusion(statement="L'évaluation n'a pas pu être générée de manière fiable.", category="uncertainty")])
+            result = AssessmentResult(uncertainties=[AssessmentConclusion(conclusion_id="uncertainty-1", statement="L'évaluation n'a pas pu être générée de manière fiable.", category="uncertainty")])
             evidence = []
             verdict = "block"
             status = "failed"

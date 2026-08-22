@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class AssessmentConclusion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    conclusion_id: str = Field(min_length=1, max_length=80)
     statement: str = Field(min_length=1, max_length=4000)
     category: Literal["obligation", "recommendation", "uncertainty"]
     source_refs: list[str] = Field(default_factory=list, max_length=10)

@@ -1,0 +1,23 @@
+{
+  "benchmark_id": "launch_roadmap_v1",
+  "ticket": "SCRUM-190",
+  "research_question": "RQ-008",
+  "cases": [
+    {"id":"LR-001","split":"development","conclusions":[{"id":"o-reg","type":"obligation","title":"Effectuer les formalités d'immatriculation"},{"id":"r-plan","type":"recommendation","title":"Préparer un plan de lancement"}],"expected":["o-reg","r-plan"],"must_not":[]},
+    {"id":"LR-002","split":"development","conclusions":[{"id":"o-gdpr","type":"obligation","title":"Respecter les obligations de protection des données"},{"id":"u-dpo","type":"uncertainty","title":"Déterminer si un DPO est requis"}],"expected":["o-gdpr","u-dpo"],"must_not":[]},
+    {"id":"LR-003","split":"development","conclusions":[{"id":"r-doc","type":"recommendation","title":"Documenter les procédures internes"}],"expected":["r-doc"],"must_not":["Créer une obligation de certification"]},
+    {"id":"LR-004","split":"development","conclusions":[{"id":"o-health","type":"obligation","title":"Vérifier les exigences applicables aux activités de santé"},{"id":"r-expert","type":"recommendation","title":"Consulter un expert sectoriel"}],"expected":["o-health","r-expert"],"must_not":[]},
+    {"id":"LR-005","split":"development","conclusions":[{"id":"o-doc","type":"obligation","title":"Conserver les documents réglementaires requis"},{"id":"r-archive","type":"recommendation","title":"Mettre en place un archivage structuré"}],"expected":["o-doc","r-archive"],"must_not":[]},
+    {"id":"LR-006","split":"development","conclusions":[{"id":"u-market","type":"uncertainty","title":"Confirmer le marché cible"},{"id":"r-study","type":"recommendation","title":"Réaliser une étude de marché"}],"expected":["u-market","r-study"],"must_not":[]},
+    {"id":"LR-007","split":"development","conclusions":[{"id":"o-payment","type":"obligation","title":"Sécuriser le traitement des paiements"}],"expected":["o-payment"],"must_not":["Obtenir automatiquement une licence bancaire"]},
+    {"id":"LR-008","split":"development","conclusions":[{"id":"o-eu","type":"obligation","title":"Appliquer les règles pertinentes du marché européen"},{"id":"u-country","type":"uncertainty","title":"Confirmer les pays de lancement"}],"expected":["o-eu","u-country"],"must_not":[]},
+    {"id":"LR-009","split":"development","conclusions":[{"id":"r-security","type":"recommendation","title":"Renforcer la sécurité opérationnelle"},{"id":"u-scope","type":"uncertainty","title":"Clarifier le périmètre de traitement"}],"expected":["r-security","u-scope"],"must_not":[]},
+    {"id":"LR-010","split":"development","conclusions":[{"id":"o-register","type":"obligation","title":"Réaliser l'enregistrement requis"},{"id":"r-check","type":"recommendation","title":"Planifier une revue périodique"}],"expected":["o-register","r-check"],"must_not":[]},
+    {"id":"LR-011","split":"holdout","conclusions":[{"id":"o-data","type":"obligation","title":"Informer les personnes concernées"},{"id":"r-notice","type":"recommendation","title":"Simplifier les notices d'information"}],"expected":["o-data","r-notice"],"must_not":[]},
+    {"id":"LR-012","split":"holdout","conclusions":[{"id":"o-sector","type":"obligation","title":"Respecter les règles du secteur réglementé"},{"id":"u-authority","type":"uncertainty","title":"Confirmer l'autorité compétente"}],"expected":["o-sector","u-authority"],"must_not":[]},
+    {"id":"LR-013","split":"holdout","conclusions":[{"id":"r-governance","type":"recommendation","title":"Formaliser la gouvernance du projet"}],"expected":["r-governance"],"must_not":["Transformer la gouvernance en obligation légale"]},
+    {"id":"LR-014","split":"holdout","conclusions":[{"id":"o-retention","type":"obligation","title":"Définir une durée de conservation conforme"},{"id":"u-retention","type":"uncertainty","title":"Confirmer les durées par catégorie"}],"expected":["o-retention","u-retention"],"must_not":[]},
+    {"id":"LR-015","split":"holdout","conclusions":[{"id":"o-market","type":"obligation","title":"Vérifier les obligations de commercialisation"},{"id":"r-market","type":"recommendation","title":"Préparer les supports commerciaux"}],"expected":["o-market","r-market"],"must_not":[]},
+    {"id":"LR-016","split":"holdout","conclusions":[{"id":"u-cert","type":"uncertainty","title":"Confirmer si une certification est nécessaire"},{"id":"r-audit","type":"recommendation","title":"Préparer un audit de préparation"}],"expected":["u-cert","r-audit"],"must_not":["Présenter la certification comme obligatoire"]}
+  ]
+}

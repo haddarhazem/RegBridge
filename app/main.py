@@ -12,6 +12,7 @@ from app.modules.projects.router import router as projects_router
 from app.modules.documents.router import router as documents_router
 from app.modules.regulatory.router import router as regulatory_router
 from app.modules.regulatory.assessment_router import router as assessment_router
+from app.modules.regulatory.roadmap_router import router as roadmap_router
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(conversations_router)
     application.include_router(regulatory_router)
     application.include_router(assessment_router)
+    application.include_router(roadmap_router)
     logger.info("Starting %s in %s environment", active_settings.app_name, active_settings.environment)
     return application
 
