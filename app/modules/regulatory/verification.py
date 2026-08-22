@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.ai.llm import LLMGenerationRequest, LLMMessage, LLMProvider, LLMProviderError
+from app.modules.ai.llm import LLMExecutionMetadata, LLMGenerationRequest, LLMMessage, LLMProvider, LLMProviderError
 from app.modules.regulatory.contracts import RegulatoryEvidence
 
 VerificationVerdict = Literal["pass", "pass_with_warnings", "block"]
@@ -48,6 +48,7 @@ class VerificationResult(BaseModel):
     claims: list[SemanticClaim] = Field(default_factory=list, max_length=50)
     technical_failure_category: str | None = Field(default=None, max_length=80)
     latency_ms: float = Field(ge=0)
+    execution: LLMExecutionMetadata | None = None
 
 
 _SEMANTIC_SCHEMA = {
@@ -86,7 +87,7 @@ class SemanticVerifier:
     def __init__(self, provider: LLMProvider) -> None:
         self.provider = provider
 
-    async def verify(self, *, question: str, answer: str, evidence: list[RegulatoryEvidence]) -> SemanticVerificationOutput:
+    async def verify(self, *, question: str, answer: str, evidence: list[RegulatoryEvidence]) -> tuple[SemanticVerificationOutput, LLMExecutionMetadata | None]:
         evidence_text = "\n\n".join(
             f"[EVIDENCE {item.point_id}] Organization: {item.organization}\n{item.content}"
             for item in evidence
@@ -110,12 +111,14 @@ class SemanticVerifier:
             temperature=0,
             max_tokens=900,
             response_format=_SEMANTIC_SCHEMA,
+            prompt_version="scrum185-semantic-verification-v1",
+            operation="semantic_verification",
         )
         response = await self.provider.generate(request)
         content = response.content.strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        return SemanticVerificationOutput.model_validate(json.loads(content))
+        return SemanticVerificationOutput.model_validate(json.loads(content)), response.execution
 
 
 class ResponseVerificationService:
@@ -144,9 +147,19 @@ class ResponseVerificationService:
                 latency_ms=(time.perf_counter() - started) * 1000,
             )
         try:
-            semantic = await self.semantic.verify(question=question, answer=answer, evidence=evidence)
-        except LLMProviderError:
-            return self._provider_failure(started)
+            semantic, execution = await self.semantic.verify(question=question, answer=answer, evidence=evidence)
+        except LLMProviderError as exc:
+            category = "semantic_verification_unavailable" if exc.category == "provider_error" else exc.category
+            return self._provider_failure(started, category=category, execution=LLMExecutionMetadata(
+                provider=exc.provider,
+                logical_model=exc.model,
+                model=exc.model,
+                prompt_version=exc.prompt_version,
+                operation=exc.operation,
+                status="failed",
+                duration_ms=exc.duration_ms,
+                error_category=category,
+            ))
         except (ValueError, TypeError, json.JSONDecodeError):
             return self._provider_failure(started, category="invalid_semantic_output")
 
@@ -162,13 +175,15 @@ class ResponseVerificationService:
             reasons=semantic.reasons,
             claims=semantic.claims,
             latency_ms=(time.perf_counter() - started) * 1000,
+            execution=execution,
         )
 
     @staticmethod
-    def _provider_failure(started: float, category: str = "semantic_verification_unavailable") -> VerificationResult:
+    def _provider_failure(started: float, category: str = "semantic_verification_unavailable", execution: LLMExecutionMetadata | None = None) -> VerificationResult:
         return VerificationResult(
             verdict="block",
             reasons=["The answer could not be verified reliably."],
             technical_failure_category=category,
             latency_ms=(time.perf_counter() - started) * 1000,
+            execution=execution,
         )

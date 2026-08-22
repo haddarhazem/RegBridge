@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import time
 from typing import Any
 
 from mistralai.client import Mistral
@@ -14,6 +15,7 @@ from app.modules.ai.llm import (
     LLMGenerationError,
     LLMGenerationRequest,
     LLMGenerationResponse,
+    LLMExecutionMetadata,
     LLMProviderUnavailableError,
 )
 
@@ -31,6 +33,7 @@ class MistralLLMProvider:
 
     async def generate(self, request: LLMGenerationRequest) -> LLMGenerationResponse:
         messages = [message.model_dump() for message in request.messages]
+        started = time.perf_counter()
         try:
             response = await self._client.chat.complete_async(
                 model=self.model,
@@ -40,24 +43,52 @@ class MistralLLMProvider:
                 response_format=request.response_format,
             )
         except Exception as exc:
-            raise LLMProviderUnavailableError("Mistral generation service is unavailable") from exc
+            error = LLMProviderUnavailableError("Mistral generation service is unavailable", category="provider_unavailable")
+            error.duration_ms = (time.perf_counter() - started) * 1000
+            error.provider = "mistral"
+            error.model = self.model
+            error.prompt_version = request.prompt_version
+            error.operation = request.operation
+            raise error from exc
 
         try:
             choice = response.choices[0]
             content = choice.message.content
             if not isinstance(content, str) or not content.strip():
-                raise LLMGenerationError("Mistral returned an empty response")
-            usage = _safe_usage(getattr(response, "usage", None))
-            return LLMGenerationResponse(
-                content=content.strip(),
-                model=str(getattr(response, "model", self.model)),
-                finish_reason=getattr(choice, "finish_reason", None),
-                usage=usage,
-            )
+                raise ValueError("Mistral returned an empty response")
         except LLMGenerationError:
             raise
         except Exception as exc:
-            raise LLMGenerationError("Mistral returned an invalid response") from exc
+            error = LLMGenerationError("Mistral returned an invalid response", category="provider_generation_error")
+            error.duration_ms = (time.perf_counter() - started) * 1000
+            error.provider = "mistral"
+            error.model = self.model
+            error.prompt_version = request.prompt_version
+            error.operation = request.operation
+            raise error from exc
+
+        duration_ms = (time.perf_counter() - started) * 1000
+        usage = _safe_usage(getattr(response, "usage", None))
+        execution = LLMExecutionMetadata(
+            provider="mistral",
+            logical_model=self.model,
+            model=str(getattr(response, "model", self.model)),
+            prompt_version=request.prompt_version,
+            operation=request.operation,
+            status="success",
+            duration_ms=duration_ms,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            total_tokens=usage.get("total_tokens"),
+            estimated_cost=None,
+        )
+        return LLMGenerationResponse(
+            content=content.strip(),
+            model=str(getattr(response, "model", self.model)),
+            finish_reason=getattr(choice, "finish_reason", None),
+            usage=usage,
+            execution=execution,
+        )
 
 
 def _safe_usage(usage: Any) -> dict[str, int | float]:

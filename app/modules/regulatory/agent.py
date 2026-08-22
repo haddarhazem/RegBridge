@@ -48,13 +48,26 @@ class RegulatoryAgent(Agent):
         )
         context = _context_text(request)
         user_prompt = f"USER QUESTION\n{request.question}\n\nAUTHORIZED PROJECT CONTEXT\n{context}\n\nRETRIEVED REGULATORY EVIDENCE\n{evidence_prompt}"
+        prompt_version = "scrum184-regulatory-answer-v1"
         try:
             generated = await self.provider.generate(LLMGenerationRequest(messages=[
                 LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS),
                 LLMMessage(role="user", content=user_prompt),
-            ]))
-        except LLMProviderError:
-            return self._failure("generation_unavailable", "The regulatory answer service is temporarily unavailable")
+            ], prompt_version=prompt_version, operation="regulatory_answer_generation"))
+        except LLMProviderError as exc:
+            return self._failure(
+                "generation_unavailable",
+                "The regulatory answer service is temporarily unavailable",
+                structured_payload={
+                    "provider": exc.provider,
+                    "logical_model": exc.model,
+                    "prompt_version": prompt_version,
+                    "status": "failed",
+                    "error_category": exc.category,
+                    "duration_ms": exc.duration_ms,
+                    "estimated_cost": None,
+                },
+            )
 
         organizations = _unique_organizations(evidence)
         verification = await self.verifier.verify(
@@ -77,18 +90,20 @@ class RegulatoryAgent(Agent):
                 "top_k": 5,
                 "provider": "mistral",
                 "model": generated.model,
+                **_execution_payload("generation", generated.execution),
                 **_verification_payload(verification),
             },
             warnings=[] if verification.verdict == "pass" else verification.reasons,
         )
 
-    def _failure(self, code: str, warning: str) -> AgentResult:
+    def _failure(self, code: str, warning: str, structured_payload: dict[str, str | int | float | bool | None] | None = None) -> AgentResult:
         return AgentResult(
             agent_name=self.name,
             capability="regulatory",
             status="failed",
             error_code=code,
             warnings=[warning],
+            structured_payload=structured_payload or {},
         )
 
 
@@ -129,4 +144,33 @@ def _verification_payload(result: VerificationResult) -> dict[str, str | int | f
         "semantic_support": " | ".join(f"{claim.claim_id}:{claim.support}" for claim in result.claims)[:1000],
         "verification_latency_ms": round(result.latency_ms, 3),
         "verification_failure_category": result.technical_failure_category,
+        **_execution_payload("verification", result.execution),
+    }
+
+
+def _execution_payload(prefix: str, execution) -> dict[str, str | int | float | bool | None]:
+    if execution is None:
+        return {
+            f"{prefix}_status": None,
+            f"{prefix}_provider": None,
+            f"{prefix}_logical_model": None,
+            f"{prefix}_duration_ms": None,
+            f"{prefix}_prompt_tokens": None,
+            f"{prefix}_completion_tokens": None,
+            f"{prefix}_total_tokens": None,
+            f"{prefix}_estimated_cost": None,
+        }
+    return {
+        f"{prefix}_status": execution.status,
+        f"{prefix}_provider": execution.provider,
+        f"{prefix}_logical_model": execution.logical_model,
+        f"{prefix}_model": execution.model,
+        f"{prefix}_prompt_version": execution.prompt_version,
+        f"{prefix}_operation": execution.operation,
+        f"{prefix}_duration_ms": round(execution.duration_ms, 3) if execution.duration_ms is not None else None,
+        f"{prefix}_prompt_tokens": execution.prompt_tokens,
+        f"{prefix}_completion_tokens": execution.completion_tokens,
+        f"{prefix}_total_tokens": execution.total_tokens,
+        f"{prefix}_estimated_cost": execution.estimated_cost,
+        f"{prefix}_error_category": execution.error_category,
     }

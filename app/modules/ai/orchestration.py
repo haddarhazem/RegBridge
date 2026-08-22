@@ -125,6 +125,10 @@ class Orchestrator:
     @staticmethod
     def _trace_request(capability: str, request: OrchestrationRequest) -> AgentRunRequestTrace:
         refs = []
+        if request.conversation_id:
+            refs.append(TraceResourceRef(resource_type="conversation", resource_id=request.conversation_id))
+        if request.message_id:
+            refs.append(TraceResourceRef(resource_type="message", resource_id=request.message_id))
         if request.subject_type and request.subject_id:
             refs.append(TraceResourceRef(resource_type=request.subject_type, resource_id=request.subject_id))
         return AgentRunRequestTrace(intent=capability, locale=request.locale, context_refs=refs)
@@ -132,6 +136,7 @@ class Orchestrator:
     async def _create_run(self, request: OrchestrationRequest, *, agent_name: str, capability: str, parent_run_id=None):
         run = await self.agent_run_service.create_run(
             request_id=request.request_id,
+            message_id=request.message_id,
             parent_run_id=parent_run_id,
             user_id=request.principal.user_id if request.principal else None,
             agent_name=agent_name,

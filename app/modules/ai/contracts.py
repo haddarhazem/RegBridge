@@ -14,6 +14,8 @@ class OrchestrationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    conversation_id: uuid.UUID | None = None
+    message_id: uuid.UUID | None = None
     question: str = Field(default="", max_length=4000)
     principal: AuthenticatedPrincipal | None = None
     subject_type: Literal["project"] | None = None
