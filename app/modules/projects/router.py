@@ -8,7 +8,7 @@ from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.onboarding import confirmed_fields, next_questions
-from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
+from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectFactCorrection, ProjectFactResponse, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
 from app.modules.projects.service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -40,6 +40,19 @@ def project_response(project, membership) -> ProjectResponse:
         location=getattr(project, "location", None),
         onboarding_status=getattr(project, "onboarding_status", None),
         confirmed_fields=confirmed_fields(project) if hasattr(project, "confirmed_fields") else [],
+    )
+
+
+def fact_response(fact) -> ProjectFactResponse:
+    return ProjectFactResponse(
+        id=fact.id,
+        project_id=fact.project_id,
+        domain=fact.domain,
+        value=fact.value,
+        origin=fact.origin,
+        status=fact.status,
+        provenance=fact.provenance,
+        uncertainty=fact.uncertainty,
     )
 
 
@@ -81,6 +94,33 @@ async def update_onboarding(project_id: uuid.UUID, data: IdeaOnboardingUpdate, p
         confirmed_fields=confirmed_fields(project),
         next_questions=next_questions(project),
     )
+
+
+@router.post("/{project_id}/facts/infer", response_model=list[ProjectFactResponse])
+async def infer_project_facts(project_id: uuid.UUID, principal: Principal, session: Session) -> list[ProjectFactResponse]:
+    facts = await ProjectService(session).infer_facts(principal, project_id)
+    return [fact_response(fact) for fact in facts]
+
+
+@router.get("/{project_id}/facts", response_model=list[ProjectFactResponse])
+async def list_project_facts(project_id: uuid.UUID, principal: Principal, session: Session) -> list[ProjectFactResponse]:
+    facts = await ProjectService(session).list_facts(principal, project_id)
+    return [fact_response(fact) for fact in facts]
+
+
+@router.post("/{project_id}/facts/{fact_id}/confirm", response_model=ProjectFactResponse)
+async def confirm_project_fact(project_id: uuid.UUID, fact_id: uuid.UUID, principal: Principal, session: Session) -> ProjectFactResponse:
+    return fact_response(await ProjectService(session).confirm_fact(principal, project_id, fact_id))
+
+
+@router.patch("/{project_id}/facts/{fact_id}", response_model=ProjectFactResponse)
+async def correct_project_fact(project_id: uuid.UUID, fact_id: uuid.UUID, data: ProjectFactCorrection, principal: Principal, session: Session) -> ProjectFactResponse:
+    return fact_response(await ProjectService(session).correct_fact(principal, project_id, fact_id, data.value))
+
+
+@router.delete("/{project_id}/facts/{fact_id}", response_model=ProjectFactResponse)
+async def reject_project_fact(project_id: uuid.UUID, fact_id: uuid.UUID, principal: Principal, session: Session) -> ProjectFactResponse:
+    return fact_response(await ProjectService(session).reject_fact(principal, project_id, fact_id))
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

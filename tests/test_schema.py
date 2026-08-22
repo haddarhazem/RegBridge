@@ -13,6 +13,7 @@ EXPECTED_TABLES = {
     "roles",
     "user_roles",
     "projects",
+    "project_facts",
     "project_members",
     "audit_logs",
     "documents",
@@ -36,7 +37,7 @@ def test_alembic_has_scrum187_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum187_idea_onboarding"]
+    assert heads == ["scrum188_project_facts"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 

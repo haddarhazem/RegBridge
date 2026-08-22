@@ -17,6 +17,16 @@ class ContextAuthorizationError(Exception):
 
 
 @dataclass(frozen=True)
+class ProjectFactProjection:
+    domain: str
+    value: str
+    origin: str
+    status: str
+    provenance: dict[str, str | None]
+    uncertainty: str
+
+
+@dataclass(frozen=True)
 class ProjectContextProjection:
     project_type: str
     country_code: str
@@ -27,6 +37,7 @@ class ProjectContextProjection:
     data_context: str | None = None
     target_market: str | None = None
     location: str | None = None
+    facts: tuple[ProjectFactProjection, ...] = ()
 
 
 class ProjectContextRepository(Protocol):
@@ -72,6 +83,7 @@ class AuthorizedContextBuilder:
             data_context=projection.data_context,
             target_market=projection.target_market,
             location=projection.location,
+            facts=[{"domain": fact.domain, "value": fact.value, "origin": fact.origin, "status": fact.status, "provenance": fact.provenance, "uncertainty": fact.uncertainty} for fact in projection.facts],
         )
 
 

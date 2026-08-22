@@ -10,6 +10,10 @@ MemberRole = Literal["owner", "founder", "admin", "member", "viewer"]
 MembershipStatus = Literal["invited", "active", "revoked"]
 OnboardingField = Literal["activity", "sector", "technology", "data", "market", "location"]
 OnboardingStatus = Literal["in_progress", "complete"]
+FactDomain = Literal["activity", "sector", "technology", "data", "market", "location"]
+FactOrigin = Literal["inferred", "user_declared"]
+FactStatus = Literal["pending_confirmation", "confirmed", "corrected", "deleted"]
+FactUncertainty = Literal["high", "medium", "low"]
 
 
 class ProjectCreate(BaseModel):
@@ -89,6 +93,30 @@ class IdeaOnboardingResponse(BaseModel):
     status: OnboardingStatus
     confirmed_fields: list[OnboardingField]
     next_questions: list[OnboardingQuestion]
+
+
+class ProjectFactProvenanceResponse(BaseModel):
+    source_field: str
+    excerpt: str
+    rule: str | None = None
+    correction: str | None = None
+
+
+class ProjectFactResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    domain: FactDomain
+    value: str
+    origin: FactOrigin
+    status: FactStatus
+    provenance: ProjectFactProvenanceResponse
+    uncertainty: FactUncertainty
+
+
+class ProjectFactCorrection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str = Field(min_length=1, max_length=500)
 
 
 class ProjectMemberInvite(BaseModel):

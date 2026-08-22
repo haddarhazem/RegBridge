@@ -7,8 +7,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.context import ProjectContextProjection
-from app.modules.projects.models import Project, ProjectMember
+from app.modules.ai.context import ProjectContextProjection, ProjectFactProjection
+from app.modules.projects.models import Project, ProjectFact, ProjectMember
 
 
 class ProjectContextRepository:
@@ -42,6 +42,11 @@ class ProjectContextRepository:
         values = row.one_or_none()
         if values is None:
             return None
+        facts = await self.session.execute(
+            select(ProjectFact.domain, ProjectFact.value, ProjectFact.origin, ProjectFact.status, ProjectFact.provenance, ProjectFact.uncertainty)
+            .where(ProjectFact.project_id == project_id, ProjectFact.status.in_(["confirmed", "corrected"]))
+            .order_by(ProjectFact.created_at, ProjectFact.id)
+        )
         return ProjectContextProjection(
             project_type=values.project_type,
             country_code=values.country_code,
@@ -52,4 +57,5 @@ class ProjectContextRepository:
             data_context=values.data_context,
             target_market=values.target_market,
             location=values.location,
+            facts=tuple(ProjectFactProjection(domain=row.domain, value=row.value, origin=row.origin, status=row.status, provenance=row.provenance, uncertainty=row.uncertainty) for row in facts),
         )

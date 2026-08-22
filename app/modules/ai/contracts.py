@@ -53,6 +53,7 @@ class AuthorizedContext(BaseModel):
     data_context: str | None = Field(default=None, max_length=500)
     target_market: str | None = Field(default=None, max_length=120)
     location: str | None = Field(default=None, max_length=160)
+    facts: list[dict[str, object]] = Field(default_factory=list, max_length=50)
 
 
 class AgentRequest(BaseModel):

@@ -9,7 +9,8 @@ from app.modules.identity.models import User
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.audit import AuditLog
 from app.modules.projects.authorization import ProjectAuthorizationPolicy
-from app.modules.projects.models import Project, ProjectMember
+from app.modules.projects.facts import extract_project_facts
+from app.modules.projects.models import Project, ProjectFact, ProjectMember
 from app.modules.projects.onboarding import onboarding_status
 from app.modules.projects.schemas import IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectMemberInvite, ProjectMemberUpdate, ProjectUpdate
 
@@ -89,6 +90,71 @@ class ProjectService:
         if project.project_type != "idea":
             raise HTTPException(status_code=404, detail="Idea project not found")
         return project
+
+    async def list_facts(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> list[ProjectFact]:
+        project = await self._project(project_id)
+        if project.project_type != "idea":
+            raise HTTPException(status_code=404, detail="Idea project not found")
+        membership = await self._membership(project_id, actor.user_id, active_only=True)
+        self.policy.require(membership is not None)
+        return list((await self.session.scalars(select(ProjectFact).where(ProjectFact.project_id == project_id).order_by(ProjectFact.created_at, ProjectFact.id))).all())
+
+    async def infer_facts(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> list[ProjectFact]:
+        project = await self._project(project_id)
+        if project.project_type != "idea":
+            raise HTTPException(status_code=404, detail="Idea project not found")
+        membership = await self._membership(project_id, actor.user_id, active_only=True)
+        self.policy.require(self.policy.can_edit(membership))
+        existing = {(fact.domain, fact.value, fact.status) for fact in (await self.session.scalars(select(ProjectFact).where(ProjectFact.project_id == project_id))).all()}
+        created: list[ProjectFact] = []
+        for data in extract_project_facts(project.raw_description):
+            key = (data["domain"], data["value"], "pending_confirmation")
+            if key in existing:
+                continue
+            fact = ProjectFact(project_id=project_id, **data)
+            self.session.add(fact)
+            created.append(fact)
+        await self._audit(actor, "project.facts_inferred", project.id, project.id, "project_fact", {"count": len(created), "domains": sorted({fact.domain for fact in created})})
+        await self.session.commit()
+        return created
+
+    async def _fact_for_editor(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID) -> ProjectFact:
+        project = await self._project(project_id)
+        if project.project_type != "idea":
+            raise HTTPException(status_code=404, detail="Idea project not found")
+        membership = await self._membership(project_id, actor.user_id, active_only=True)
+        self.policy.require(self.policy.can_edit(membership))
+        fact = await self.session.scalar(select(ProjectFact).where(ProjectFact.id == fact_id, ProjectFact.project_id == project_id))
+        if fact is None:
+            raise HTTPException(status_code=404, detail="Project fact not found")
+        return fact
+
+    async def confirm_fact(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID) -> ProjectFact:
+        fact = await self._fact_for_editor(actor, project_id, fact_id)
+        if fact.status != "deleted":
+            fact.status = "confirmed"
+        await self._audit(actor, "project.fact_confirmed", project_id, fact.id, "project_fact", {"domain": fact.domain})
+        await self.session.commit()
+        return fact
+
+    async def correct_fact(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID, value: str) -> ProjectFact:
+        fact = await self._fact_for_editor(actor, project_id, fact_id)
+        provenance = dict(fact.provenance or {})
+        provenance.setdefault("original_value", fact.value)
+        provenance["correction"] = "user-provided correction"
+        fact.value = value
+        fact.status = "corrected"
+        fact.provenance = provenance
+        await self._audit(actor, "project.fact_corrected", project_id, fact.id, "project_fact", {"domain": fact.domain})
+        await self.session.commit()
+        return fact
+
+    async def reject_fact(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID) -> ProjectFact:
+        fact = await self._fact_for_editor(actor, project_id, fact_id)
+        fact.status = "deleted"
+        await self._audit(actor, "project.fact_rejected", project_id, fact.id, "project_fact", {"domain": fact.domain})
+        await self.session.commit()
+        return fact
 
     async def update_onboarding(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, data: IdeaOnboardingUpdate) -> Project:
         async with self.session.begin():

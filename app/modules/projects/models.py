@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,28 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     members: Mapped[list["ProjectMember"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    facts: Mapped[list["ProjectFact"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectFact(Base):
+    __tablename__ = "project_facts"
+    __table_args__ = (
+        UniqueConstraint("project_id", "domain", "value", "status", name="uq_project_facts_active_value"),
+        Index("ix_project_facts_project_status", "project_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    domain: Mapped[str] = mapped_column(String(30), nullable=False)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    origin: Mapped[str] = mapped_column(String(30), nullable=False, server_default="inferred")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="pending_confirmation")
+    provenance: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    uncertainty: Mapped[str] = mapped_column(String(10), nullable=False, server_default="high")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    project: Mapped[Project] = relationship(back_populates="facts")
 
 
 class ProjectMember(Base):
