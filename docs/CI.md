@@ -43,7 +43,7 @@ alembic upgrade head
 alembic current
 ```
 
-before pytest. The current head must be `scrum180_documents`.
+before pytest. The current head must be `scrum190_roadmaps`.
 
 ## Security gates
 
