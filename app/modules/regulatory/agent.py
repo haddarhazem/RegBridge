@@ -9,6 +9,7 @@ from app.modules.ai.contracts import AgentRequest, AgentResult
 from app.modules.ai.llm import LLMGenerationRequest, LLMMessage, LLMProvider, LLMProviderError
 from app.modules.regulatory.contracts import RegulatoryEvidence
 from app.modules.regulatory.retrieval import RegulatoryRetriever, RegulatoryRetrievalError
+from app.modules.regulatory.verification import ResponseVerificationService, VerificationResult
 
 
 SYSTEM_INSTRUCTIONS = """You are RegBridge's regulatory information assistant.
@@ -26,9 +27,10 @@ class RegulatoryAgent(Agent):
     name = "regulatory-agent"
     capabilities = ("regulatory",)
 
-    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider) -> None:
+    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None) -> None:
         self.retriever = retriever
         self.provider = provider
+        self.verifier = verifier or ResponseVerificationService(provider=provider)
 
     async def run(self, request: AgentRequest) -> AgentResult:
         if not request.question.strip():
@@ -55,6 +57,13 @@ class RegulatoryAgent(Agent):
             return self._failure("generation_unavailable", "The regulatory answer service is temporarily unavailable")
 
         organizations = _unique_organizations(evidence)
+        verification = await self.verifier.verify(
+            question=request.question,
+            answer=generated.content,
+            evidence=evidence,
+            public_sources=organizations,
+            cited_evidence_ids=[item.point_id for item in evidence],
+        )
         return AgentResult(
             agent_name=self.name,
             capability=request.capability,
@@ -68,7 +77,9 @@ class RegulatoryAgent(Agent):
                 "top_k": 5,
                 "provider": "mistral",
                 "model": generated.model,
+                **_verification_payload(verification),
             },
+            warnings=[] if verification.verdict == "pass" else verification.reasons,
         )
 
     def _failure(self, code: str, warning: str) -> AgentResult:
@@ -106,3 +117,16 @@ def _safe_public_answer(answer: str, evidence: list[RegulatoryEvidence]) -> str:
     for item in evidence:
         sanitized = sanitized.replace(item.point_id, "[source reference]")
     return re.sub(r"(?i)(retrieval\s+score|score)\s*[:=]\s*[-+]?\d+(?:\.\d+)?", r"\1: [redacted]", sanitized)
+
+
+def _verification_payload(result: VerificationResult) -> dict[str, str | int | float | bool | None]:
+    return {
+        "verification_verdict": result.verdict,
+        "verification_reasons": " | ".join(result.reasons)[:1800],
+        "structural_issues": " | ".join(result.structural_issues)[:1000],
+        "structural_issue_count": len(result.structural_issues),
+        "semantic_claim_count": len(result.claims),
+        "semantic_support": " | ".join(f"{claim.claim_id}:{claim.support}" for claim in result.claims)[:1000],
+        "verification_latency_ms": round(result.latency_ms, 3),
+        "verification_failure_category": result.technical_failure_category,
+    }

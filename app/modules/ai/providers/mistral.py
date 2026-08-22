@@ -37,6 +37,7 @@ class MistralLLMProvider:
                 messages=messages,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
+                response_format=request.response_format,
             )
         except Exception as exc:
             raise LLMProviderUnavailableError("Mistral generation service is unavailable") from exc

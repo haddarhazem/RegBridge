@@ -58,6 +58,11 @@ async def answer_regulatory_question(data: RegulatoryQuestion, principal: Option
         raise HTTPException(status_code=404, detail="Project context not found")
     if result.results:
         answer = result.results[0]
+        if answer.structured_payload.get("verification_verdict") == "block":
+            return RegulatoryPublicResponse(
+                answer="La réponse générée n'a pas pu être vérifiée de manière fiable.",
+                sources=[],
+            )
         return RegulatoryPublicResponse(answer=answer.answer or "", sources=answer.sources)
     if result.failures and result.failures[0].error_code == "insufficient_evidence":
         return RegulatoryPublicResponse(answer="Les sources réglementaires disponibles sont insuffisantes pour répondre de manière fiable.", sources=[])

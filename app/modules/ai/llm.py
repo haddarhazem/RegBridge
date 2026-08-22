@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +20,7 @@ class LLMGenerationRequest(BaseModel):
     messages: list[LLMMessage] = Field(min_length=1, max_length=20)
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_tokens: int = Field(default=900, gt=0, le=4000)
+    response_format: dict[str, Any] | None = None
 
 
 class LLMGenerationResponse(BaseModel):

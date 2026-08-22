@@ -1,0 +1,18 @@
+{
+  "benchmark_id": "response_verification_v1",
+  "version": "1.0",
+  "research_question": "RQ-003",
+  "experiment": "EX-003",
+  "jira": "SCRUM-185",
+  "status": "candidate_needs_human_validation",
+  "case_count": 30,
+  "annotation_status": "needs_human_validation",
+  "source_basis": "exact bounded excerpts recovered from artifacts/experiments/EX-002/retrieval_runs.jsonl; VER-030 is an explicitly marked synthetic injection sanity fixture",
+  "answer_policy": "fixed candidate answers; controlled mutations are explicit benchmark metadata",
+  "privacy": "no private user data",
+  "qdrant_policy": "read-only; no corpus rebuild or mutation",
+  "human_annotation_required": true,
+  "preferred_real_evidence_cases": 29,
+  "synthetic_cases_excluded_from_preferred_subset": ["VER-030"],
+  "license": "internal research fixture; do not redistribute"
+}
