@@ -1,0 +1,15 @@
+{
+  "experiment":"EX-019-adversarial", "candidate_neutral":true,
+  "scenarios":[
+    {"scenario_id":"A01","mutation":"duplicate registration created","invariant":"I1"},
+    {"scenario_id":"A02","mutation":"duplicate interest created","invariant":"I1"},
+    {"scenario_id":"A03","mutation":"withdrawal removes another user's registration","invariant":"I10"},
+    {"scenario_id":"A04","mutation":"registration allowed after cancellation","invariant":"I5"},
+    {"scenario_id":"A05","mutation":"cancel operation by non-organizer","invariant":"I7"},
+    {"scenario_id":"A06","mutation":"concurrent duplicate registrations","invariant":"I11"},
+    {"scenario_id":"A07","mutation":"withdrawal history lost","invariant":"I6"},
+    {"scenario_id":"A08","mutation":"registration for wrong event due IDOR","invariant":"I9"},
+    {"scenario_id":"A09","mutation":"event cancellation deletes participation history","invariant":"I6"},
+    {"scenario_id":"A10","mutation":"registration exposes private startup/investor information","invariant":"I14"}
+  ]
+}
