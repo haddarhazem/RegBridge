@@ -42,6 +42,8 @@ EXPECTED_TABLES = {
     "investor_share_grants",
     "investor_profiles",
     "investor_thesis_versions",
+    "investment_opportunities",
+    "investment_opportunity_versions",
 }
 
 
@@ -57,7 +59,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum198_investor_thesis"]
+    assert heads == ["scrum200_opportunity_integrity"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 

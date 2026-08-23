@@ -1,0 +1,19 @@
+{
+  "experiment": "EX-018",
+  "rq": "RQ-018",
+  "candidate_neutral": true,
+  "scenarios": [
+    {"scenario_id":"S01","owner":"U1","initial":{"status":"ACTIVE","title":"Healthtech","description":"Healthtech investment opportunity","sectors":["healthtech"],"stages":["seed"],"geographies":["France"],"technologies":["AI"],"ticket_min":"100000","ticket_max":"500000","ticket_currency":"EUR","start_at":"2026-01-01T00:00:00Z","end_at":"2026-12-31T23:59:59Z"},"operation":"create","expected_current":"V1","expected_history":["V1"],"expected_active":true,"expected_authorization":"owner_mutation","expected_invariants":["I1","I3","I7","I9","I10"]},
+    {"scenario_id":"S02","owner":"U1","initial":{"status":"ACTIVE","title":"Minimal opportunity"},"operation":"create","expected_current":"V1","expected_history":["V1"],"expected_active":true,"expected_authorization":"owner_mutation","expected_invariants":["I8","I9"]},
+    {"scenario_id":"S03","owner":"U1","initial":{"status":"ACTIVE","description":"Initial"},"operation":"update description","expected_current":"V2","expected_history":["V1","V2"],"expected_active":true,"expected_authorization":"owner_mutation","expected_invariants":["I1","I2","I9"]},
+    {"scenario_id":"S04","owner":"U1","initial":{"status":"ACTIVE","sectors":["healthtech"]},"operation":"update criteria","expected_current":"V2","expected_history":["V1","V2"],"expected_active":true,"expected_authorization":"owner_mutation","expected_invariants":["I2","I8"]},
+    {"scenario_id":"S05","owner":"U1","initial":{"status":"ACTIVE","start_at":"2026-01-01T00:00:00Z","end_at":"2026-12-31T23:59:59Z"},"operation":"update active period","expected_current":"V2","expected_history":["V1","V2"],"expected_active":true,"expected_authorization":"owner_mutation","expected_invariants":["I7","I8"]},
+    {"scenario_id":"S06","owner":"U1","initial":{"status":"ACTIVE"},"operation":"close","expected_current":"V2","expected_history":["V1","V2"],"expected_active":false,"expected_authorization":"owner_mutation","expected_invariants":["I1","I4","I5","I6"]},
+    {"scenario_id":"S07","owner":"U1","initial":{"status":"CLOSED"},"operation":"active list","expected_current":"V1","expected_history":["V1"],"expected_active":false,"expected_authorization":"discovery_excludes","expected_invariants":["I4","I10"]},
+    {"scenario_id":"S08","owner":"U1","initial":{"status":"ACTIVE","description":"V1"},"operation":"three updates then retrieve history","expected_current":"V4","expected_history":["V1","V2","V3","V4"],"expected_active":true,"expected_authorization":"owner_history","expected_invariants":["I1","I2","I9"]},
+    {"scenario_id":"S09","owner":"U1","initial":{"status":"ACTIVE","description":"Fresh session"},"operation":"read after fresh session","expected_current":"V1","expected_history":["V1"],"expected_active":true,"expected_authorization":"owner_read","expected_invariants":["I1","I11"]},
+    {"scenario_id":"S10","owner":"U1","other_user":"U2","initial":{"status":"ACTIVE"},"operation":"unauthorized update","expected_current":"V1","expected_history":["V1"],"expected_active":true,"expected_authorization":"denied","expected_invariants":["I3"]},
+    {"scenario_id":"S11","owner":"U1","other_user":"U2","initial":{"status":"ACTIVE"},"operation":"two independent owners","expected_current":"V1","expected_history":["V1"],"expected_active":true,"expected_authorization":"isolated","expected_invariants":["I3","I9"]},
+    {"scenario_id":"S12","owner":"U1","initial":{"status":"ACTIVE","sectors":[" healthtech ","healthtech"]},"operation":"identical repeated update","expected_current":"V1","expected_history":["V1"],"expected_active":true,"expected_authorization":"owner_mutation","expected_invariants":["I2","I11"]}
+  ]
+}

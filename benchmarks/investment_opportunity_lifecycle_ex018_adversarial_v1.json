@@ -1,0 +1,14 @@
+{
+  "experiment":"EX-018-adversarial",
+  "candidate_neutral":true,
+  "scenarios":[
+    {"scenario_id":"A01","mutation":"historical version overwritten","invariant":"I2"},
+    {"scenario_id":"A02","mutation":"CLOSED opportunity appears in active listing","invariant":"I4"},
+    {"scenario_id":"A03","mutation":"unrelated PATCH silently reactivates CLOSED","invariant":"I5"},
+    {"scenario_id":"A04","mutation":"non-owner edits opportunity","invariant":"I3"},
+    {"scenario_id":"A05","mutation":"invalid date range accepted","invariant":"I7"},
+    {"scenario_id":"A06","mutation":"wrong current version selected","invariant":"I11"},
+    {"scenario_id":"A07","mutation":"concurrent stale update overwrites newer state","invariant":"I12"},
+    {"scenario_id":"A08","mutation":"financial transaction semantics added","invariant":"I10"}
+  ]
+}
