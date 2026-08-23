@@ -1,0 +1,14 @@
+[
+  {"id":"A01","mutation":"disclose pending request","expected":"deny"},
+  {"id":"A02","mutation":"disclose refused request","expected":"deny"},
+  {"id":"A03","mutation":"wrong recipient accepts","expected":"deny"},
+  {"id":"A04","mutation":"third party reads accepted contacts","expected":"deny"},
+  {"id":"A05","mutation":"reuse P1 consent for P2","expected":"deny"},
+  {"id":"A06","mutation":"accept request grants project membership","expected":"no membership"},
+  {"id":"A07","mutation":"accepted request grants investor sharing permission","expected":"no grant"},
+  {"id":"A08","mutation":"accept sibling contact channel implicitly","expected":"deny"},
+  {"id":"A09","mutation":"revoked consent remains visible","expected":"deny"},
+  {"id":"A10","mutation":"new point inherits old consent","expected":"deny"},
+  {"id":"A11","mutation":"change request/contact identifiers for IDOR","expected":"deny"},
+  {"id":"A12","mutation":"repeat pending submission","expected":"one pending request"}
+]

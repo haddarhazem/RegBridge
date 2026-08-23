@@ -1,0 +1,14 @@
+[
+  {"id":"C01","direction":"investor_to_startup","setup":"pending project request","operation":"create request","expected":"pending; no contact disclosure"},
+  {"id":"C02","direction":"investor_to_startup","setup":"pending project request","operation":"recipient accepts with EMAIL","expected":"accepted; EMAIL only"},
+  {"id":"C03","direction":"startup_to_investor","setup":"startup project and investor profile","operation":"create request","expected":"pending request scoped to source project"},
+  {"id":"C04","direction":"investor_to_startup","setup":"pending request with EMAIL","operation":"requester reads contacts","expected":"denied"},
+  {"id":"C05","direction":"investor_to_startup","setup":"accepted request with EMAIL and WEBSITE","operation":"disclose contacts","expected":"only explicitly selected channels"},
+  {"id":"C06","direction":"investor_to_startup","setup":"two active contact points","operation":"accept with one point","expected":"sibling channel hidden"},
+  {"id":"C07","direction":"investor_to_startup","setup":"active consent","operation":"recipient revokes consent","expected":"revoked channel no longer disclosed"},
+  {"id":"C08","direction":"investor_to_startup","setup":"accepted request","operation":"repeat accept","expected":"idempotent; no duplicate active consent"},
+  {"id":"C09","direction":"investor_to_startup","setup":"pending request","operation":"recipient refuses","expected":"declined; no disclosure"},
+  {"id":"C10","direction":"investor_to_startup","setup":"request for project P1","operation":"attempt consent reuse for P2","expected":"denied; project scope remains isolated"},
+  {"id":"C11","direction":"investor_to_startup","setup":"existing user contact data","operation":"create request without contact point","expected":"account email is not auto-disclosed"},
+  {"id":"C12","direction":"investor_to_startup","setup":"accepted request then new point added","operation":"disclose contacts","expected":"new point not inherited by old consent"}
+]
