@@ -12,8 +12,10 @@ The report persists exact investor thesis version provenance and an immutable
 authorized startup snapshot. It is a compatibility report, not investment
 advice or a success/return prediction.
 
-V1 LLM explanation is deferred behind a provider-availability and holdout
-gate. A future real-provider experiment may enable it only if deterministic
-score/dimensions remain authoritative, prompt injection is contained, no
-unsupported criteria or financial claims are accepted, and provider failure
-falls back safely.
+The initial prompt-only holdout produced 0/8 acceptable explanations and
+remains historical evidence. The corrected native JSON_SCHEMA integration
+produced 8/8 schema-valid and semantically accepted explanations on the final
+holdout, with 0 unsafe accepted outputs. This materially improves explanation
+format reliability, but does not alter the decision that deterministic matching
+is authoritative. Any LLM explanation path remains explanation-only and must
+retain semantic validation and deterministic fallback.

@@ -27,8 +27,11 @@ class FakeProvider:
 
 @pytest.mark.asyncio
 async def test_valid_structured_explanation_is_accepted():
-    result = await explain_with_fallback(FakeProvider(valid_payload()), investor_snapshot=INVESTOR, startup_snapshot=STARTUP, result=RESULT)
+    provider = FakeProvider(valid_payload())
+    result = await explain_with_fallback(provider, investor_snapshot=INVESTOR, startup_snapshot=STARTUP, result=RESULT)
     assert result.accepted and not result.fallback_used
+    assert provider.request.response_format["type"] == "json_schema"
+    assert provider.request.response_format["json_schema"]["schema"]["properties"]["strengths"]["items"]["enum"] == list(RESULT["dimensions"])
 
 
 @pytest.mark.parametrize("content", ["not json", json.dumps({"summary":"x"}), json.dumps({"summary":"x","strengths":[],"gaps":[],"unknowns":["stage"],"caveats":["not financial advice"]})])

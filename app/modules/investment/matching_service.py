@@ -5,9 +5,11 @@ from fastapi import HTTPException
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.ai.llm import LLMProvider
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.investment.matching import deterministic_match
 from app.modules.investment.matching_models import MatchingRun
+from app.modules.investment.matching_verification import explain_with_fallback, safe_explanation
 from app.modules.investment.models import InvestorProfile, InvestorThesisVersion
 from app.modules.projects.models import Project
 from app.modules.projects.profile_models import StartupProfile, StartupProfileRevision
@@ -15,8 +17,9 @@ from app.modules.sharing.models import InvestorShareGrant
 
 
 class MatchingService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, provider: LLMProvider | None = None) -> None:
         self.session = session
+        self.provider = provider
 
     async def _thesis(self, actor: AuthenticatedPrincipal, version_id: uuid.UUID | None) -> InvestorThesisVersion:
         profile = await self.session.scalar(select(InvestorProfile).where(InvestorProfile.user_id == actor.user_id))
@@ -71,7 +74,17 @@ class MatchingService:
         _, revision, startup = await self._startup_snapshot(actor, project_id)
         investor = self._investor_snapshot(version)
         result = deterministic_match(investor, startup)
-        run = MatchingRun(investor_user_id=actor.user_id, investor_thesis_version_id=version.id, startup_project_id=project_id, startup_snapshot_revision_id=revision.id if revision else None, investor_snapshot=investor, startup_snapshot=startup, matching_method=result["matching_method"], matching_method_version=result["matching_method_version"], score=result["score"], score_formula=result["score_formula"], dimensions=result["dimensions"], report=self._report(result), explanation_mode="deterministic_fallback", llm_provider=None, llm_model=None, prompt_version=None)
+        if self.provider is None:
+            explanation = safe_explanation(result)
+            accepted = False
+            execution: dict = {}
+        else:
+            verification = await explain_with_fallback(self.provider, investor_snapshot=investor, startup_snapshot=startup, result=result)
+            explanation = verification.explanation
+            accepted = verification.accepted
+            execution = verification.execution or {}
+        report = {**explanation.model_dump(mode="json"), "deterministic_result": result}
+        run = MatchingRun(investor_user_id=actor.user_id, investor_thesis_version_id=version.id, startup_project_id=project_id, startup_snapshot_revision_id=revision.id if revision else None, investor_snapshot=investor, startup_snapshot=startup, matching_method=result["matching_method"], matching_method_version=result["matching_method_version"], score=result["score"], score_formula=result["score_formula"], dimensions=result["dimensions"], report=report, explanation_mode="llm" if accepted else "deterministic_fallback", llm_provider=execution.get("provider") if execution else ("mistral" if self.provider is not None else None), llm_model=execution.get("model") if execution else getattr(self.provider, "model", None), prompt_version=execution.get("prompt_version") if execution else ("scrum203-matching-explanation-v1" if self.provider is not None else None))
         self.session.add(run)
         await self.session.commit()
         await self.session.refresh(run)

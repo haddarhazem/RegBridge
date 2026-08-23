@@ -1,4 +1,5 @@
 import uuid
+import json
 from decimal import Decimal
 
 import pytest
@@ -8,12 +9,14 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.modules.ai.llm import LLMExecutionMetadata, LLMGenerationResponse
 from app.modules.audit import AuditLog
 from app.modules.identity.models import User
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.investment.matching import deterministic_match
 from app.modules.investment.matching_models import MatchingRun
 from app.modules.investment.matching_service import MatchingService
+from app.modules.investment.matching_verification import safe_explanation
 from app.modules.investment.models import InvestorProfile, InvestorThesisVersion
 from app.modules.investment.schemas import ThesisCreate
 from app.modules.investment.service import InvestorProfileService
@@ -215,6 +218,54 @@ async def test_report_is_deterministic_fallback_with_caveats(matching_factory):
         async with matching_factory() as session:
             run = await MatchingService(session).create(investor, project_id, version_id)
             assert run.explanation_mode == "deterministic_fallback" and run.report["caveats"]
+    finally: await cleanup(matching_factory, [investor, startup], [project_id])
+
+
+class AcceptedMatchingProvider:
+    model = "mistral-test"
+
+    async def generate(self, request):
+        payload = json.loads(request.messages[1].content.split("\n", 1)[1])
+        explanation = safe_explanation(payload["deterministic_result"])
+        return LLMGenerationResponse(
+            content=explanation.model_dump_json(),
+            model=self.model,
+            execution=LLMExecutionMetadata(
+                provider="mistral", logical_model=self.model, model=self.model,
+                prompt_version=request.prompt_version, operation=request.operation,
+                status="success",
+            ),
+        )
+
+
+class FailingMatchingProvider:
+    model = "mistral-test"
+
+    async def generate(self, request):
+        raise RuntimeError("provider unavailable")
+
+
+@pytest.mark.asyncio
+async def test_production_path_accepts_validated_llm_explanation(matching_factory):
+    investor, startup, version_id, project_id, _ = await make_fixture(matching_factory)
+    try:
+        async with matching_factory() as session:
+            run = await MatchingService(session, AcceptedMatchingProvider()).create(investor, project_id, version_id)
+            assert run.explanation_mode == "llm"
+            assert run.report["deterministic_result"]["score"] == float(run.score)
+            assert run.report["deterministic_result"]["dimensions"] == run.dimensions
+            assert "private_notes" not in json.dumps(run.report)
+    finally: await cleanup(matching_factory, [investor, startup], [project_id])
+
+
+@pytest.mark.asyncio
+async def test_production_path_falls_back_when_provider_fails(matching_factory):
+    investor, startup, version_id, project_id, _ = await make_fixture(matching_factory)
+    try:
+        async with matching_factory() as session:
+            run = await MatchingService(session, FailingMatchingProvider()).create(investor, project_id, version_id)
+            assert run.explanation_mode == "deterministic_fallback"
+            assert run.report["deterministic_result"]["dimensions"] == run.dimensions
     finally: await cleanup(matching_factory, [investor, startup], [project_id])
 
 

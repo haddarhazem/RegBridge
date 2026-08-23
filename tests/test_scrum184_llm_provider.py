@@ -46,6 +46,20 @@ async def test_mistral_maps_provider_neutral_request_and_response():
     assert "test-secret" not in result.model_dump_json()
 
 
+@pytest.mark.asyncio
+async def test_mistral_forwards_native_structured_output_request():
+    client = FakeClient(response())
+    provider = MistralLLMProvider(api_key=SecretStr("test-secret"), model="mistral-test", client=client)
+    response_format = {"type": "json_schema", "json_schema": {"name": "Example", "schema": {"type": "object"}}}
+
+    await provider.generate(LLMGenerationRequest(
+        messages=[LLMMessage(role="user", content="Return the structured result")],
+        response_format=response_format,
+    ))
+
+    assert client.calls[0]["response_format"] == response_format
+
+
 def test_mistral_requires_key_and_model():
     with pytest.raises(LLMConfigurationError):
         MistralLLMProvider(api_key=None, model="mistral-test")
