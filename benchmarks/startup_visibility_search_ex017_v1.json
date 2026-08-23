@@ -1,0 +1,14 @@
+{"experiment":"EX-017","rq":"RQ-017","candidate_neutral":true,"scenarios":[
+ {"scenario_id":"S01","requester":"U1","startups":["P1:public:sector=healthtech"],"filters":{"sector":"healthtech"},"expected_ids":["P1"],"expected_total":1},
+ {"scenario_id":"S02","requester":"U1","startups":["P2:private:sector=healthtech"],"filters":{},"expected_ids":[],"expected_total":0},
+ {"scenario_id":"S03","requester":"U1","startups":["P3:private:technology=quantum:shared"],"filters":{"technology":"quantum"},"grant":false,"expected_ids":[],"expected_total":0},
+ {"scenario_id":"S04","requester":"U1","startups":["P3:private:technology=quantum:shared"],"filters":{},"grant":true,"expected_ids":["P3"],"expected_total":1},
+ {"scenario_id":"S05","requester":"U1","startups":["P1:public:sector=healthtech","P2:private:sector=healthtech"],"filters":{"sector":"healthtech"},"expected_ids":["P1"],"expected_total":1},
+ {"scenario_id":"S06","requester":"U1","startups":["P1","P2","P3","P4","P5","P6"],"page":1,"limit":2,"expected_total":6},
+ {"scenario_id":"S07","requester":"U1","startups":["P3:shared"],"grant":false,"expected_ids":[],"expected_total":0},
+ {"scenario_id":"S08","requester":"U1","startups":["P1","P2"],"sort":"name","expected_order":["P1","P2"]},
+ {"scenario_id":"S09","requester":"U1","filters":{"sector":"healthtech","stage":"seed"},"expected_ids":["P1"]},
+ {"scenario_id":"S10","requester":"U1","startups":["P1:stage=null"],"filters":{"stage":"seed"},"expected_ids":[]},
+ {"scenario_id":"U11","requesters":["U1","U2"],"grants":["U1:P3"],"expected_visible":{"U1":["P3"],"U2":[]}},
+ {"scenario_id":"S12","requester":"U1","filters":{"sector":"healthtech"},"repeat":2,"expected_deterministic":true}
+]}
