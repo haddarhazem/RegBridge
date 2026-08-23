@@ -1,0 +1,3 @@
+{"experiment":"EX-016-adversarial","scenarios":[
+ {"scenario_id":"A01","mutation":"partial update clears unrelated fields"},{"scenario_id":"A02","mutation":"explicit null ignored"},{"scenario_id":"A03","mutation":"historical version mutated"},{"scenario_id":"A04","mutation":"snapshot follows latest"},{"scenario_id":"A05","mutation":"cross-user update"},{"scenario_id":"A06","mutation":"invalid ticket range"},{"scenario_id":"A07","mutation":"non-deterministic duplicate normalization"},{"scenario_id":"A08","mutation":"missing preference invented"}
+]}

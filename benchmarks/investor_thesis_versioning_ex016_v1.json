@@ -1,0 +1,17 @@
+{
+  "experiment":"EX-016","rq":"RQ-016","candidate_neutral":true,
+  "scenarios":[
+    {"scenario_id":"T01","initial":{"sectors":["healthtech"],"stages":["seed"],"geographies":["France"],"technologies":["AI"],"ticket_min":"100000","ticket_max":"500000"},"operation":"create"},
+    {"scenario_id":"T02","initial":{"sectors":["healthtech"]},"operation":"create"},
+    {"scenario_id":"T03","initial":{},"operation":"create"},
+    {"scenario_id":"T04","initial":{"sectors":["healthtech"],"technologies":["AI"]},"operation":"update technologies"},
+    {"scenario_id":"T05","initial":{"geographies":["France"]},"operation":"clear geography"},
+    {"scenario_id":"T06","initial":{"ticket_min":"100000","ticket_max":"500000"},"operation":"update ticket"},
+    {"scenario_id":"T07","initial":{"sectors":["healthtech"]},"operation":"multiple updates"},
+    {"scenario_id":"T08","initial":{"sectors":["healthtech"]},"operation":"snapshot old version"},
+    {"scenario_id":"T09","initial":{"technologies":["AI"]},"operation":"fresh session read"},
+    {"scenario_id":"T10","initial":{"sectors":[]},"operation":"empty list versus null"},
+    {"scenario_id":"T11","initial":{"sectors":["healthtech"]},"operation":"two independent users"},
+    {"scenario_id":"T12","initial":{"sectors":[" healthtech ","healthtech"]},"operation":"identical repeated update"}
+  ]
+}

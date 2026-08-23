@@ -40,6 +40,8 @@ EXPECTED_TABLES = {
     "compliance_control_evidence_links",
     "compliance_score_calculations",
     "investor_share_grants",
+    "investor_profiles",
+    "investor_thesis_versions",
 }
 
 
@@ -47,7 +49,7 @@ def test_single_metadata_contains_foundation_and_document_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert "user_consents" not in Base.metadata.tables
     assert "project_access_grants" not in Base.metadata.tables
-    assert "investor_profiles" not in Base.metadata.tables
+    assert "investor_profiles" in Base.metadata.tables
 
 
 def test_alembic_has_current_head() -> None:
@@ -55,7 +57,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum197_grant_uniqueness"]
+    assert heads == ["scrum198_investor_thesis"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 
