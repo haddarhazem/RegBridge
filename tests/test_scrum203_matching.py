@@ -17,6 +17,10 @@ from app.modules.investment.matching import deterministic_match
 from app.modules.investment.matching_models import MatchingRun
 from app.modules.investment.matching_service import MatchingService
 from app.modules.investment.matching_verification import safe_explanation
+from app.modules.investment.brief_models import InvestorOpportunityBriefRun
+from app.modules.investment.brief_generation import deterministic_generation
+from app.modules.investment.brief_schemas import BriefEvidenceBundle
+from app.modules.investment.brief_service import OpportunityBriefService
 from app.modules.investment.models import InvestorProfile, InvestorThesisVersion
 from app.modules.investment.schemas import ThesisCreate
 from app.modules.investment.service import InvestorProfileService
@@ -77,6 +81,7 @@ async def make_fixture(factory, *, visibility="public", investor_label="investor
 async def cleanup(factory, actors, project_ids):
     ids = [item.user_id for item in actors]
     async with factory() as session:
+        await session.execute(delete(InvestorOpportunityBriefRun).where(InvestorOpportunityBriefRun.investor_user_id.in_(ids)))
         await session.execute(delete(MatchingRun).where(MatchingRun.investor_user_id.in_(ids)))
         await session.execute(delete(InvestorShareGrant).where(InvestorShareGrant.project_id.in_(project_ids)))
         await session.execute(delete(AuditLog).where(AuditLog.actor_user_id.in_(ids), AuditLog.project_id.in_(project_ids)))
@@ -245,6 +250,19 @@ class FailingMatchingProvider:
         raise RuntimeError("provider unavailable")
 
 
+class AcceptedBriefProvider:
+    model = "mistral-test"
+
+    async def generate(self, request):
+        payload = json.loads(request.messages[1].content.split("\n", 1)[1])
+        generated = deterministic_generation(BriefEvidenceBundle.model_validate(payload))
+        return LLMGenerationResponse(
+            content=generated.model_dump_json(),
+            model=self.model,
+            execution=LLMExecutionMetadata(provider="mistral", logical_model=self.model, model=self.model, prompt_version=request.prompt_version, operation=request.operation, status="success"),
+        )
+
+
 @pytest.mark.asyncio
 async def test_production_path_accepts_validated_llm_explanation(matching_factory):
     investor, startup, version_id, project_id, _ = await make_fixture(matching_factory)
@@ -267,6 +285,36 @@ async def test_production_path_falls_back_when_provider_fails(matching_factory):
             assert run.explanation_mode == "deterministic_fallback"
             assert run.report["deterministic_result"]["dimensions"] == run.dimensions
     finally: await cleanup(matching_factory, [investor, startup], [project_id])
+
+
+@pytest.mark.asyncio
+async def test_scrum204_brief_persists_snapshots_and_metadata(matching_factory):
+    investor, startup, version_id, project_id, revision_id = await make_fixture(matching_factory)
+    try:
+        async with matching_factory() as session:
+            brief = await OpportunityBriefService(session, AcceptedBriefProvider()).create(investor, project_id, version_id)
+            assert brief.generation_strategy == "mistral_json_schema"
+            assert brief.status == "UNVERIFIED"
+            assert brief.matching_run_id is not None
+            assert brief.investor_thesis_version_id == version_id
+            assert brief.startup_snapshot_revision_id == revision_id
+            assert brief.content["disclaimer"].startswith("This brief is based only")
+            assert "private-secret" not in str(brief.evidence_bundle)
+        async with matching_factory() as session:
+            historical = await OpportunityBriefService(session).get(investor, brief.id)
+            assert historical.investor_snapshot["sectors"] == ["healthtech"]
+    finally: await cleanup(matching_factory, [investor, startup], [project_id])
+
+
+@pytest.mark.asyncio
+async def test_scrum204_cross_investor_brief_denied(matching_factory):
+    investor, startup, version_id, project_id, _ = await make_fixture(matching_factory)
+    other = await make_user(matching_factory, "brief-other")
+    try:
+        async with matching_factory() as session:
+            with pytest.raises(HTTPException):
+                await OpportunityBriefService(session).create(other, project_id, version_id)
+    finally: await cleanup(matching_factory, [investor, startup, other], [project_id])
 
 
 def test_private_and_unsupported_text_cannot_change_score():
