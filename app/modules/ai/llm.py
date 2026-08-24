@@ -63,6 +63,9 @@ class LLMProviderError(RuntimeError):
         self.model: str | None = None
         self.prompt_version: str | None = None
         self.operation: str | None = None
+        self.cause_type: str | None = None
+        self.cause_message: str | None = None
+        self.http_status: int | None = None
 
 
 class LLMConfigurationError(LLMProviderError):

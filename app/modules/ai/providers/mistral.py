@@ -49,6 +49,9 @@ class MistralLLMProvider:
             error.model = self.model
             error.prompt_version = request.prompt_version
             error.operation = request.operation
+            error.cause_type = type(exc).__name__
+            error.cause_message = _safe_provider_message(exc)
+            error.http_status = getattr(exc, "status_code", None) if isinstance(getattr(exc, "status_code", None), int) else None
             raise error from exc
 
         try:
@@ -65,6 +68,8 @@ class MistralLLMProvider:
             error.model = self.model
             error.prompt_version = request.prompt_version
             error.operation = request.operation
+            error.cause_type = type(exc).__name__
+            error.cause_message = _safe_provider_message(exc)
             raise error from exc
 
         duration_ms = (time.perf_counter() - started) * 1000
@@ -100,6 +105,15 @@ def _safe_usage(usage: Any) -> dict[str, int | float]:
         if isinstance(value, (int, float)):
             result[key] = value
     return result
+
+
+def _safe_provider_message(exc: Exception) -> str:
+    """Keep bounded diagnostics without credentials, headers, or request data."""
+    message = str(exc)
+    for marker in ("authorization", "api-key", "api_key", "bearer"):
+        if marker.casefold() in message.casefold():
+            return "provider exception contained sensitive authentication data"
+    return message[:500]
 
 
 @lru_cache(maxsize=1)

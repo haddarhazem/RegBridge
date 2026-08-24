@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.llm import LLMProvider
+from app.modules.ai.providers.mistral import get_mistral_provider
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.investment.brief_generation import (
     BRIEF_GENERATION_VERSION,
@@ -17,6 +18,10 @@ from app.modules.investment.brief_generation import (
     public_content,
 )
 from app.modules.investment.brief_models import InvestorOpportunityBriefRun
+from app.modules.investment.brief_semantic_verification import verify_semantically
+from app.modules.investment.brief_verification import ClaimDecision, VERIFIER_STRATEGY, VERIFIER_VERSION, verify_frozen_brief
+from app.modules.investment.brief_verification_models import BriefClaimVerification, BriefVerificationRun
+from app.modules.investment.brief_verification_schemas import BriefVerificationResponse, ClaimVerificationResponse
 from app.modules.investment.brief_schemas import BriefEvidenceBundle
 from app.modules.investment.matching_models import MatchingRun
 from app.modules.investment.matching_service import MatchingService
@@ -101,3 +106,65 @@ class OpportunityBriefService:
         if run is None:
             raise HTTPException(status_code=404, detail="Opportunity brief not found")
         return run
+
+    async def verify(self, actor: AuthenticatedPrincipal, run_id: uuid.UUID) -> BriefVerificationResponse:
+        brief = await self.get(actor, run_id)
+        decisions = verify_frozen_brief(brief.content, brief.evidence_bundle, brief.matching_result)
+        semantic_provider = self.provider
+        provider_metadata: dict = {}
+        if any(decision.verdict == "UNVERIFIABLE" for decision in decisions) and semantic_provider is None:
+            try:
+                semantic_provider = get_mistral_provider()
+            except Exception:
+                semantic_provider = None
+        if semantic_provider is not None:
+            resolved: list[ClaimDecision] = []
+            for decision in decisions:
+                if decision.verdict != "UNVERIFIABLE":
+                    resolved.append(decision)
+                    continue
+                evidence = {"confirmed_facts": [fact for fact in brief.evidence_bundle.get("confirmed_facts", []) if fact.get("evidence_ref") in decision.evidence_refs], "matching_result": {"dimensions": brief.matching_result.get("dimensions", {})}}
+                semantic, execution, error = await verify_semantically(semantic_provider, claim=decision.claim_text, claim_type=decision.claim_type, evidence=evidence, evidence_refs=decision.evidence_refs)
+                if execution:
+                    provider_metadata = execution
+                if semantic is None:
+                    resolved.append(ClaimDecision(decision.claim_id, decision.section, decision.claim_text, decision.claim_type, "UNVERIFIABLE", "semantic_provider_unavailable" if error and error.startswith("provider_failure") else "semantic_output_rejected", decision.evidence_refs))
+                else:
+                    resolved.append(ClaimDecision(decision.claim_id, decision.section, decision.claim_text, decision.claim_type, semantic.status, f"semantic_{semantic.reason_code}", semantic.evidence_refs))
+            decisions = resolved
+        status = "VERIFIED" if decisions and all(decision.verdict == "SUPPORTED" for decision in decisions) else "VERIFICATION_FAILED"
+        verification = BriefVerificationRun(
+            brief_run_id=brief.id,
+            verifier_strategy=VERIFIER_STRATEGY,
+            verifier_version=VERIFIER_VERSION,
+            status=status,
+            provider=provider_metadata.get("provider"),
+            model=provider_metadata.get("model"),
+            prompt_version=provider_metadata.get("prompt_version"),
+        )
+        self.session.add(verification)
+        await self.session.flush()
+        rows = [BriefClaimVerification(
+            verification_run_id=verification.id,
+            claim_id=decision.claim_id,
+            section=decision.section,
+            claim_text=decision.claim_text,
+            claim_type=decision.claim_type,
+            verdict=decision.verdict,
+            reason_code=decision.reason_code,
+            evidence_refs=decision.evidence_refs,
+        ) for decision in decisions]
+        self.session.add_all(rows)
+        brief.status = status
+        await self.session.commit()
+        await self.session.refresh(verification)
+        rows.sort(key=lambda row: str(row.id))
+        return BriefVerificationResponse(
+            id=verification.id,
+            brief_run_id=brief.id,
+            verifier_strategy=verification.verifier_strategy,
+            verifier_version=verification.verifier_version,
+            status=verification.status,
+            created_at=verification.created_at,
+            claims=[ClaimVerificationResponse.model_validate(row) for row in rows],
+        )
