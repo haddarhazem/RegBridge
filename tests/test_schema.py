@@ -53,6 +53,7 @@ EXPECTED_TABLES = {
     "investor_opportunity_brief_runs",
     "investor_opportunity_brief_verification_runs",
     "investor_opportunity_brief_claim_verifications",
+    "investor_opportunity_brief_versions",
 }
 
 
@@ -68,7 +69,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum205_brief_verification"]
+    assert heads == ["scrum206_brief_versions"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 

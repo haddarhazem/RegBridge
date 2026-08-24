@@ -82,3 +82,33 @@ class OpportunityBriefResponse(BaseModel):
     matching_run_id: uuid.UUID | None
     content: OpportunityBriefContent
     created_at: datetime
+
+
+class BriefVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: OpportunityBriefContent
+
+
+class BriefVersionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    brief_run_id: uuid.UUID
+    version_number: int
+    author_user_id: uuid.UUID
+    created_at: datetime
+    status: str
+    verification_status: str
+    approved: bool
+    approved_by_user_id: uuid.UUID | None
+    approved_at: datetime | None
+    investor_thesis_version_id: uuid.UUID
+    startup_snapshot_revision_id: uuid.UUID | None
+    matching_run_id: uuid.UUID | None
+    generation_strategy: str
+    generation_version: str
+    provider: str | None
+    model: str | None
+    prompt_version: str | None
+    content: OpportunityBriefContent

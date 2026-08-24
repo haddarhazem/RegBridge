@@ -18,6 +18,7 @@ class BriefVerificationRun(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     brief_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("investor_opportunity_brief_runs.id", ondelete="RESTRICT"), nullable=False)
+    brief_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("investor_opportunity_brief_versions.id", ondelete="RESTRICT"))
     verifier_strategy: Mapped[str] = mapped_column(String(60), nullable=False)
     verifier_version: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False)

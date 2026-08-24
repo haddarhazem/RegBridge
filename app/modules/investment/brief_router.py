@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
-from app.modules.investment.brief_schemas import OpportunityBriefContent, OpportunityBriefCreate, OpportunityBriefResponse
+from app.modules.investment.brief_schemas import BriefVersionCreate, BriefVersionResponse, OpportunityBriefContent, OpportunityBriefCreate, OpportunityBriefResponse
 from app.modules.investment.brief_service import OpportunityBriefService
 from app.modules.investment.brief_verification_schemas import BriefVerificationResponse
 
@@ -41,9 +41,51 @@ async def get_verifications(run_id: uuid.UUID, principal: Principal, session: Se
     await OpportunityBriefService(session).get(principal, run_id)
     from sqlalchemy import select
     from app.modules.investment.brief_verification_models import BriefVerificationRun, BriefClaimVerification
-    runs = list((await session.scalars(select(BriefVerificationRun).where(BriefVerificationRun.brief_run_id == run_id).order_by(BriefVerificationRun.created_at))).all())
+    current = await OpportunityBriefService(session).current_version(principal, run_id)
+    runs = list((await session.scalars(select(BriefVerificationRun).where(BriefVerificationRun.brief_version_id == current.id).order_by(BriefVerificationRun.created_at))).all())
     result = []
     for run in runs:
         claims = list((await session.scalars(select(BriefClaimVerification).where(BriefClaimVerification.verification_run_id == run.id).order_by(BriefClaimVerification.id))).all())
-        result.append(BriefVerificationResponse(id=run.id, brief_run_id=run_id, verifier_strategy=run.verifier_strategy, verifier_version=run.verifier_version, status=run.status, created_at=run.created_at, claims=claims))
+        result.append(BriefVerificationResponse(id=run.id, brief_run_id=run_id, brief_version_id=run.brief_version_id, verifier_strategy=run.verifier_strategy, verifier_version=run.verifier_version, status=run.status, created_at=run.created_at, claims=claims))
     return result
+
+
+@router.get("/{run_id}/versions", response_model=list[BriefVersionResponse])
+async def list_brief_versions(run_id: uuid.UUID, principal: Principal, session: Session):
+    return await OpportunityBriefService(session).list_versions(principal, run_id)
+
+
+@router.get("/{run_id}/versions/current", response_model=BriefVersionResponse)
+async def get_current_brief_version(run_id: uuid.UUID, principal: Principal, session: Session):
+    version = await OpportunityBriefService(session).current_version(principal, run_id)
+    return await OpportunityBriefService(session).version_response(version)
+
+
+@router.get("/{run_id}/versions/{version_id}", response_model=BriefVersionResponse)
+async def get_brief_version(run_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    service = OpportunityBriefService(session)
+    version = await service._authorized_version(principal, version_id)
+    if version.brief_run_id != run_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Opportunity brief version not found")
+    return await service.version_response(version)
+
+
+@router.post("/{run_id}/versions", response_model=BriefVersionResponse, status_code=status.HTTP_201_CREATED)
+async def create_brief_version(run_id: uuid.UUID, data: BriefVersionCreate, principal: Principal, session: Session):
+    return await OpportunityBriefService(session).create_version(principal, run_id, data)
+
+
+@router.post("/{run_id}/versions/{version_id}/verify", response_model=BriefVerificationResponse)
+async def verify_brief_version(run_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    return await OpportunityBriefService(session).verify(principal, run_id, version_id)
+
+
+@router.post("/{run_id}/versions/{version_id}/approve", response_model=BriefVersionResponse)
+async def approve_brief_version(run_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    service = OpportunityBriefService(session)
+    version = await service._authorized_version(principal, version_id)
+    if version.brief_run_id != run_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Opportunity brief version not found")
+    return await service.approve_version(principal, version_id)

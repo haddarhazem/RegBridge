@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,4 +34,32 @@ class InvestorOpportunityBriefRun(Base):
     provider: Mapped[str | None] = mapped_column(String(80))
     model: Mapped[str | None] = mapped_column(String(120))
     prompt_version: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InvestorOpportunityBriefVersion(Base):
+    """Append-only content versions under one stable generated brief identity."""
+
+    __tablename__ = "investor_opportunity_brief_versions"
+    __table_args__ = (
+        UniqueConstraint("brief_run_id", "version_number", name="uq_brief_version_number"),
+        Index("ix_brief_versions_brief_number", "brief_run_id", "version_number"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    brief_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("investor_opportunity_brief_runs.id", ondelete="CASCADE"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    author_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="DRAFT")
+    investor_thesis_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("investor_thesis_versions.id", ondelete="RESTRICT"), nullable=False)
+    startup_snapshot_revision_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("startup_profile_revisions.id", ondelete="RESTRICT"))
+    matching_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("investment_matching_runs.id", ondelete="RESTRICT"))
+    generation_strategy: Mapped[str] = mapped_column(String(60), nullable=False)
+    generation_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(80))
+    model: Mapped[str | None] = mapped_column(String(120))
+    prompt_version: Mapped[str | None] = mapped_column(String(80))
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -27,6 +27,7 @@ class BriefVerificationResponse(BaseModel):
 
     id: uuid.UUID
     brief_run_id: uuid.UUID
+    brief_version_id: uuid.UUID | None = None
     verifier_strategy: str
     verifier_version: str
     status: str
