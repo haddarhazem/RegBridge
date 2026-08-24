@@ -9,7 +9,7 @@ class InvestorShareGrant(Base):
     __tablename__ = "investor_share_grants"
     __table_args__ = (
         UniqueConstraint("project_id", "recipient_user_id", "resource_type", "resource_id", "resource_version_id", "scope", name="uq_investor_share_grants_exact"),
-        CheckConstraint("resource_type IN ('STARTUP_PROFILE_REVISION', 'COMPLIANCE_SCORE_CALCULATION', 'DOCUMENT_VERSION')", name="investor_share_grants_resource_type"),
+        CheckConstraint("resource_type IN ('STARTUP_PROFILE_REVISION', 'COMPLIANCE_SCORE_CALCULATION', 'DOCUMENT_VERSION', 'INVESTOR_OPPORTUNITY_BRIEF_VERSION')", name="investor_share_grants_resource_type"),
         CheckConstraint("scope = 'READ'", name="investor_share_grants_scope"),
         CheckConstraint("status IN ('ACTIVE', 'REVOKED')", name="investor_share_grants_status"),
         Index("ix_investor_share_grants_recipient_status", "recipient_user_id", "status"),

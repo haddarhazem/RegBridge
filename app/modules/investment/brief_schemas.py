@@ -112,3 +112,31 @@ class BriefVersionResponse(BaseModel):
     model: str | None
     prompt_version: str | None
     content: OpportunityBriefContent
+
+
+class BriefShareCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipient_user_id: uuid.UUID
+    scope: Literal["READ"] = "READ"
+
+
+class BriefShareResponse(BaseModel):
+    id: uuid.UUID
+    version_id: uuid.UUID
+    recipient_user_id: uuid.UUID
+    scope: Literal["READ"]
+    status: Literal["ACTIVE", "REVOKED"]
+    created_at: datetime
+    revoked_at: datetime | None
+
+
+class SharedBriefResponse(BaseModel):
+    share_id: uuid.UUID
+    brief_run_id: uuid.UUID
+    version_id: uuid.UUID
+    version_number: int
+    status: Literal["APPROVED"]
+    scope: Literal["READ"]
+    content: OpportunityBriefContent
+    created_at: datetime

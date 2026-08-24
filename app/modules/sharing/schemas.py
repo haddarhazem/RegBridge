@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
-ResourceType = Literal["STARTUP_PROFILE_REVISION", "COMPLIANCE_SCORE_CALCULATION", "DOCUMENT_VERSION"]
+ResourceType = Literal["STARTUP_PROFILE_REVISION", "COMPLIANCE_SCORE_CALCULATION", "DOCUMENT_VERSION", "INVESTOR_OPPORTUNITY_BRIEF_VERSION"]
 
 class ShareGrantCreate(BaseModel):
     recipient_user_id: uuid.UUID

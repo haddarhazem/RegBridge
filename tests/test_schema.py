@@ -69,7 +69,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum206_brief_versions"]
+    assert heads == ["scrum207_brief_sharing_export"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 
