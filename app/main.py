@@ -23,6 +23,7 @@ from app.modules.events.router import router as events_router
 from app.modules.network.router import router as network_router
 from app.modules.investment.matching_router import router as matching_router
 from app.modules.investment.brief_router import router as brief_router
+from app.modules.research.router import router as research_router
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(network_router)
     application.include_router(matching_router)
     application.include_router(brief_router)
+    application.include_router(research_router)
     logger.info("Starting %s in %s environment", active_settings.app_name, active_settings.environment)
     return application
 
