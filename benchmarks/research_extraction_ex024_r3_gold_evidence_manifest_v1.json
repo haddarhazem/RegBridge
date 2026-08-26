@@ -1,0 +1,1161 @@
+{
+  "manifest_id": "research-extraction-ex024-r3-gold-evidence-v1",
+  "benchmark_id": "research-extraction-ex024-r3-holdout-v1",
+  "original_benchmark_sha256": "7844F7AD2A2FC5A9883FAD873C7252B60B1E61B18E1EE09760F4E70F60220A17",
+  "statuses_changed": false,
+  "canonical_values_changed": false,
+  "items": [
+    {
+      "case_id": "R3-001",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "This research examines lunar dust transport.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 44
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-001",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We use a particle-tracking simulation.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 45,
+        "end_char": 83
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-001",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The problem is predicting dust accumulation.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 84,
+        "end_char": 128
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-001",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The simulation method uses Monte Carlo sampling.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 129,
+        "end_char": 177
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-001",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The model reports 91.4% prediction agreement.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 178,
+        "end_char": 223
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-001",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The stated application is habitat planning.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 264,
+        "end_char": 307
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-001",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: lunar dust; transport.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 224,
+        "end_char": 263
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-001",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The limitation is a single-orbit dataset.",
+      "source_version_id": "R3-001",
+      "source_sha256": "1da980175b4c59274e407ae8f57a1db417d5bb38510d29b7daf4c42c521a4aea",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-001",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 308,
+        "end_char": 349
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-003",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The paper investigates coral bleaching dynamics.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 48
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-003",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We deploy a hyperspectral camera.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 49,
+        "end_char": 82
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-003",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The research question concerns early bleaching detection.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 83,
+        "end_char": 140
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-003",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The protocol combines transect sampling and image analysis.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 141,
+        "end_char": 200
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-003",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The camera recorded a 6.2% false-alarm rate.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 201,
+        "end_char": 245
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-003",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The authors identify reef surveillance as an explicit application.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 303,
+        "end_char": 369
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-003",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: coral bleaching; hyperspectral imaging.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 246,
+        "end_char": 302
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-003",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The study is limited to shallow-water observations.",
+      "source_version_id": "R3-003",
+      "source_sha256": "47d9954a38dc992f42aa09be6e8a1eb275dbd1443c9e28570a2bbffe3cc99bbc",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-003",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 370,
+        "end_char": 421
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-005",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "This work studies biodegradable packaging films.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 48
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-005",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We formulate a cellulose nanofiber composite.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 49,
+        "end_char": 94
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-005",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The research problem is loss of barrier performance under humidity.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 95,
+        "end_char": 162
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-005",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Barrier testing uses gravimetric permeation measurements.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 163,
+        "end_char": 220
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-005",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The film retains 73% oxygen resistance after 48 hours.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 221,
+        "end_char": 275
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-005",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Food-packaging screening is the explicit application stated by the authors.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 325,
+        "end_char": 400
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-005",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: packaging film; oxygen barrier.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 276,
+        "end_char": 324
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-005",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The result is preliminary and was not validated in a production line.",
+      "source_version_id": "R3-005",
+      "source_sha256": "24905fc8f22177f41e05d246beadf93b65bb4592b63f0acbb1696f5951c44e9c",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-005",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 401,
+        "end_char": 470
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-007",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We investigate groundwater nitrate transport.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 45
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-007",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The study uses a fiber-optic nitrate probe.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 46,
+        "end_char": 89
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-007",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The research problem is locating seasonal nitrate peaks.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 90,
+        "end_char": 146
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-007",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Measurements follow a repeated-well sampling design.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 147,
+        "end_char": 199
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-007",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The probe measured 18.7 mg/L at the maximum sampling point.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 200,
+        "end_char": 259
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-007",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The report states watershed screening as an application.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 309,
+        "end_char": 365
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-007",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: groundwater; nitrate transport.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 260,
+        "end_char": 308
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-007",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The inference is correlational and does not prove that fertilizer causes the peak.",
+      "source_version_id": "R3-007",
+      "source_sha256": "5f39dae1f4509ff046986fe5164784b696e30bea00dc5749f7699db25ba89620",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-007",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 366,
+        "end_char": 448
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-009",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The project examines wildfire smoke dispersion.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 47
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-009",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We implement a lattice-based transport model.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 48,
+        "end_char": 93
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-009",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The question is how plume concentration changes across valleys.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 94,
+        "end_char": 157
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-009",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The method combines wind-tunnel trials with numerical fitting.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 158,
+        "end_char": 220
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-009",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The model estimates 42.5% agreement with sensor observations.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 221,
+        "end_char": 282
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-009",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The authors state emergency-routing support as an intended application.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 328,
+        "end_char": 399
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-009",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: wildfire smoke; dispersion.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 283,
+        "end_char": 327
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-009",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The model was tested in one valley and not generalized to all terrain.",
+      "source_version_id": "R3-009",
+      "source_sha256": "0a996e6bd58aeac2874be5c14bdef17a453e521e6e271de9592f6784f4ab6033",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-009",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 400,
+        "end_char": 470
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-011",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "This study addresses fungal spore detection.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 44
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-011",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We build a quartz-crystal microbalance sensor.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 45,
+        "end_char": 91
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-011",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The research problem is detecting low-concentration spores.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 92,
+        "end_char": 151
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-011",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The assay uses controlled aerosol exposure.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 152,
+        "end_char": 195
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-011",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The sensor produced a 2.8 ng response threshold.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 196,
+        "end_char": 244
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-011",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The explicit application is indoor ventilation screening.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 293,
+        "end_char": 350
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-011",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: fungal spores; aerosol sensor.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 245,
+        "end_char": 292
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-011",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The experiments used prepared aerosols rather than occupied buildings.",
+      "source_version_id": "R3-011",
+      "source_sha256": "27e46fae6f319b8a51d3cdfe7444a3d53a8faaffd0607e9c9e04f80cf8acd378",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-011",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 351,
+        "end_char": 421
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-013",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We examine battery thermal runaway indicators.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 46
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-013",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The prototype uses a fiber-Bragg-grating strain sensor.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 47,
+        "end_char": 102
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-013",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The problem is early detection of cell swelling.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 103,
+        "end_char": 151
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-013",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Testing uses controlled heating cycles.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 152,
+        "end_char": 191
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-013",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The sensor identified swelling with 89.1% sensitivity.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 192,
+        "end_char": 246
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-013",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The paper names laboratory safety screening as an application.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 296,
+        "end_char": 358
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-013",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: battery safety; strain sensing.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 247,
+        "end_char": 295
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-013",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The authors do not claim human safety, a patent, TRL 7, or market readiness.",
+      "source_version_id": "R3-013",
+      "source_sha256": "54ac97dfe26008774a694dedbe829c3428eba8e516f54f6083977e0c788732c6",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-013",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 359,
+        "end_char": 435
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-015",
+      "field": "domains",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "This research investigates algal biofuel cultivation.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-001",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 0,
+        "start_char": 0,
+        "end_char": 53
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-015",
+      "field": "technologies",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "We use a photobioreactor with optical density sensing.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-002",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 1,
+        "start_char": 54,
+        "end_char": 108
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-015",
+      "field": "research_problem",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The problem is stabilizing biomass productivity.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-003",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 2,
+        "start_char": 109,
+        "end_char": 157
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-015",
+      "field": "methodology",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The method combines batch cultivation and spectrometric monitoring.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-004",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 3,
+        "start_char": 158,
+        "end_char": 225
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-015",
+      "field": "main_results",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The culture produced 31.6 g/L biomass in the test period.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-005",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 4,
+        "start_char": 226,
+        "end_char": 283
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-015",
+      "field": "explicit_applications",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The authors identify process monitoring as an explicit application.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-007",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 6,
+        "start_char": 325,
+        "end_char": 392
+      },
+      "critical": true
+    },
+    {
+      "case_id": "R3-015",
+      "field": "keywords",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "Author keywords: algae; photobioreactor.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-006",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 5,
+        "start_char": 284,
+        "end_char": 324
+      },
+      "critical": false
+    },
+    {
+      "case_id": "R3-015",
+      "field": "limitations",
+      "ordinal": 0,
+      "expected_status": "SUPPORTED",
+      "canonical_value": "The experiment was preliminary and did not establish commercial viability.",
+      "source_version_id": "R3-015",
+      "source_sha256": "2e92dec527745cba92166807c03242c33b24e84d3d5c13726c4e93687781fe90",
+      "segment_id": "SRC-008",
+      "locator": {
+        "document_version_id": "R3-015",
+        "locator_type": "paragraph",
+        "paragraph": 7,
+        "start_char": 393,
+        "end_char": 467
+      },
+      "critical": false
+    }
+  ]
+}

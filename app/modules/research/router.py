@@ -2,14 +2,18 @@ import uuid
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, UploadFile, status, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
-from app.modules.research.schemas import ResearcherProfileResponse, ResearcherProfileUpsert, ResearchOutputCreate, ResearchOutputResponse, ResearchOutputVersionResponse
+from app.modules.research.schemas import ResearcherProfileResponse, ResearcherProfileUpsert, ResearchOutputCreate, ResearchOutputResponse, ResearchOutputVersionResponse, ResearchExtractionResponse, ResearchExtractionItemResponse, ResearchEvidenceResponse
+from app.modules.research.extraction import ResearchExtractionService
+from app.modules.research.models import ResearchEvidenceRef, ResearchExtractionItem, ResearchExtractionRun
+from app.modules.documents.storage import get_object_storage
+from sqlalchemy import select
 from app.modules.research.service import ResearchService, missing_rights_fields
 
 router = APIRouter(tags=["research"])
@@ -83,3 +87,31 @@ async def download_research_output_version(output_id: uuid.UUID, version_id: uui
     version, stream = await ResearchService(session).download(principal, output_id, version_id)
     filename = quote(version.original_filename.replace("\r", "").replace("\n", ""))
     return StreamingResponse(stream, media_type=version.mime_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"})
+
+
+async def _extraction_response(actor, session, output_id, version_id, run_id):
+    await ResearchService(session).get_version(actor, output_id, version_id)
+    run = await session.scalar(select(ResearchExtractionRun).where(ResearchExtractionRun.id == run_id, ResearchExtractionRun.research_output_id == output_id, ResearchExtractionRun.research_output_version_id == version_id, ResearchExtractionRun.owner_user_id == actor.user_id))
+    if run is None: raise HTTPException(status_code=404, detail="Research extraction not found")
+    items = []
+    for item in (await session.scalars(select(ResearchExtractionItem).where(ResearchExtractionItem.run_id == run.id).order_by(ResearchExtractionItem.field, ResearchExtractionItem.item_order))).all():
+        refs = (await session.scalars(select(ResearchEvidenceRef).where(ResearchEvidenceRef.item_id == item.id).order_by(ResearchEvidenceRef.item_order))).all()
+        items.append(ResearchExtractionItemResponse(field=item.field, status=item.status, source_text=item.source_text, item_order=item.item_order, evidence=[ResearchEvidenceResponse(segment_id=ref.segment_id, locator=ref.locator) for ref in refs]))
+    return ResearchExtractionResponse(id=run.id, research_output_id=run.research_output_id, research_output_version_id=run.research_output_version_id, document_version_id=run.document_version_id, source_sha256=run.source_sha256, strategy=run.strategy, strategy_version=run.strategy_version, provider=run.provider, model=run.model, status=run.status, regbridge_abstract=run.regbridge_abstract, created_at=run.created_at, completed_at=run.completed_at, items=items)
+
+
+@router.post("/research/outputs/{output_id}/versions/{version_id}/extractions", response_model=ResearchExtractionResponse, status_code=status.HTTP_201_CREATED)
+async def create_research_extraction(output_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    return await _extraction_response(principal, session, output_id, version_id, (await ResearchExtractionService(session, get_object_storage()).create(principal, output_id, version_id)).id)
+
+
+@router.get("/research/outputs/{output_id}/versions/{version_id}/extractions/{run_id}", response_model=ResearchExtractionResponse)
+async def get_research_extraction(output_id: uuid.UUID, version_id: uuid.UUID, run_id: uuid.UUID, principal: Principal, session: Session):
+    return await _extraction_response(principal, session, output_id, version_id, run_id)
+
+
+@router.get("/research/outputs/{output_id}/versions/{version_id}/extractions", response_model=list[ResearchExtractionResponse])
+async def list_research_extractions(output_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    await ResearchService(session).get_version(principal, output_id, version_id)
+    runs = (await session.scalars(select(ResearchExtractionRun.id).where(ResearchExtractionRun.owner_user_id == principal.user_id, ResearchExtractionRun.research_output_id == output_id, ResearchExtractionRun.research_output_version_id == version_id).order_by(ResearchExtractionRun.created_at))).all()
+    return [await _extraction_response(principal, session, output_id, version_id, run_id) for run_id in runs]

@@ -67,3 +67,33 @@ class ResearchOutputVersionResponse(BaseModel):
     content_hash: str
     original_filename: str
     created_at: datetime
+
+
+class ResearchEvidenceResponse(BaseModel):
+    segment_id: str
+    locator: dict
+
+
+class ResearchExtractionItemResponse(BaseModel):
+    field: str
+    status: str
+    source_text: str | None
+    item_order: int
+    evidence: list[ResearchEvidenceResponse]
+
+
+class ResearchExtractionResponse(BaseModel):
+    id: uuid.UUID
+    research_output_id: uuid.UUID
+    research_output_version_id: uuid.UUID
+    document_version_id: uuid.UUID
+    source_sha256: str
+    strategy: str
+    strategy_version: str
+    provider: str
+    model: str
+    status: str
+    regbridge_abstract: str
+    created_at: datetime
+    completed_at: datetime | None
+    items: list[ResearchExtractionItemResponse]
