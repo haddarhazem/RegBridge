@@ -29,16 +29,18 @@ def p(user_id,label): return AuthenticatedPrincipal(user_id=user_id,email=f"{lab
 
 async def fixture(factory):
     ids=[uuid.uuid4() for _ in range(3)]; actors=[p(ids[0],"u1"),p(ids[1],"u2"),p(ids[2],"owner")]
+    health_sector=f"healthtech-{ids[0]}"; fintech_sector=f"fintech-{ids[0]}"
+    ai_technology=f"ai-{ids[0]}"; quantum_technology=f"quantum-{ids[0]}"; robotics_technology=f"robotics-{ids[0]}"
     async with factory() as session:
         session.add_all([User(id=item.user_id,email=item.email) for item in actors])
-        p1=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Alpha",raw_description="alpha",sector="healthtech",technology="AI",location="France",current_progress="seed",visibility="public",confirmed_fields={})
-        p2=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Private",raw_description="private",sector="healthtech",technology="quantum",location="France",current_progress="seed",visibility="private",confirmed_fields={})
-        p3=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Shared",raw_description="shared",sector="fintech",technology="robotics",location="Germany",current_progress="growth",visibility="private",confirmed_fields={})
-        p4=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Beta",raw_description="beta",sector="fintech",technology="AI",location="Germany",current_progress="seed",visibility="public",confirmed_fields={})
+        p1=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Alpha",raw_description="alpha",sector=health_sector,technology=ai_technology,location="France",current_progress="seed",visibility="public",confirmed_fields={})
+        p2=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Private",raw_description="private",sector=health_sector,technology=quantum_technology,location="France",current_progress="seed",visibility="private",confirmed_fields={})
+        p3=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Shared",raw_description="shared",sector=fintech_sector,technology=robotics_technology,location="Germany",current_progress="growth",visibility="private",confirmed_fields={})
+        p4=Project(owner_user_id=ids[2],project_type="existing_startup",display_name="Beta",raw_description="beta",sector=fintech_sector,technology=ai_technology,location="Germany",current_progress="seed",visibility="public",confirmed_fields={})
         session.add_all([p1,p2,p3,p4]); await session.flush()
         profile=StartupProfile(project_id=p3.id,current_revision=1); session.add(profile); await session.flush(); revision=StartupProfileRevision(profile_id=profile.id,revision_number=1,snapshot=[{"field_name":"investor_summary","visibility":"INVESTOR_SHARED","value":"shared-safe"},{"field_name":"internal_notes","visibility":"PRIVATE","value":"hidden"}],changed_by_user_id=ids[2]); session.add(revision); await session.flush(); profile.current_version_id=revision.id
         session.add(InvestorShareGrant(project_id=p3.id,recipient_user_id=ids[0],resource_type="STARTUP_PROFILE_REVISION",resource_id=revision.id,scope="READ",status="ACTIVE",granted_by_user_id=ids[2]))
-        await session.commit(); return {"actors":actors,"u1":ids[0],"u2":ids[1],"projects":[p1.id,p2.id,p3.id,p4.id],"grant":revision.id}
+        await session.commit(); return {"actors":actors,"u1":ids[0],"u2":ids[1],"projects":[p1.id,p2.id,p3.id,p4.id],"grant":revision.id,"health_sector":health_sector,"fintech_sector":fintech_sector,"robotics_technology":robotics_technology}
 
 async def cleanup(factory,data):
     async with factory() as session:
@@ -53,9 +55,22 @@ async def test_public_only_search_hides_private_rows_and_counts(search_factory):
     data=await fixture(search_factory)
     try:
         async with search_factory() as session:
-            result=await StartupSearchService(session).search(data["actors"][0],StartupSearchFilters(sector="healthtech")); assert [x.startup_id for x in result.items] == [data["projects"][0]] and result.total_count == 1
+            result=await StartupSearchService(session).search(data["actors"][0],StartupSearchFilters(sector=data["health_sector"])); assert [x.startup_id for x in result.items] == [data["projects"][0]] and result.total_count == 1
             all_public=await StartupSearchService(session).search(data["actors"][0],StartupSearchFilters()); assert data["projects"][1] not in [x.startup_id for x in all_public.items]
     finally: await cleanup(search_factory,data)
+
+@pytest.mark.asyncio
+async def test_search_fixture_isolated_after_previous_persisted_fixture(search_factory):
+    first = await fixture(search_factory)
+    await cleanup(search_factory, first)
+    second = await fixture(search_factory)
+    try:
+        async with search_factory() as session:
+            result = await StartupSearchService(session).search(second["actors"][0], StartupSearchFilters(sector=second["health_sector"]))
+            assert [item.startup_id for item in result.items] == [second["projects"][0]]
+            assert result.total_count == 1
+    finally:
+        await cleanup(search_factory, second)
 
 @pytest.mark.asyncio
 async def test_valid_grant_expands_only_shared_projection_and_revocation(search_factory):
@@ -74,7 +89,7 @@ async def test_filters_sorting_pagination_and_repeatability(search_factory):
     data=await fixture(search_factory)
     try:
         async with search_factory() as session:
-            service=StartupSearchService(session); result=await service.search(data["actors"][0],StartupSearchFilters(sector="fintech",stage="seed",page=1,limit=1,sort="name")); assert result.total_count == 1 and result.items[0].startup_id == data["projects"][3]
+            service=StartupSearchService(session); result=await service.search(data["actors"][0],StartupSearchFilters(sector=data["fintech_sector"],stage="seed",page=1,limit=1,sort="name")); assert result.total_count == 1 and result.items[0].startup_id == data["projects"][3]
             one=await service.search(data["actors"][0],StartupSearchFilters(sort="name")); two=await service.search(data["actors"][0],StartupSearchFilters(sort="name")); assert [x.startup_id for x in one.items] == [x.startup_id for x in two.items]
     finally: await cleanup(search_factory,data)
 
@@ -92,7 +107,7 @@ async def test_wrong_recipient_and_cross_project_are_not_authorized(search_facto
     data=await fixture(search_factory)
     try:
         async with search_factory() as session:
-            result=await StartupSearchService(session).search(data["actors"][1],StartupSearchFilters(technology="robotics")); assert result.total_count == 0
+            result=await StartupSearchService(session).search(data["actors"][1],StartupSearchFilters(technology=data["robotics_technology"])); assert result.total_count == 0
     finally: await cleanup(search_factory,data)
 
 def test_missing_filter_values_do_not_match():
