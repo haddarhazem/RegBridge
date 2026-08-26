@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -78,3 +78,52 @@ class ProjectMember(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     project: Mapped[Project] = relationship(back_populates="members", foreign_keys=[project_id])
+
+
+class StartupResearchNeed(Base):
+    __tablename__ = "startup_research_needs"
+    __table_args__ = (Index("ix_startup_research_needs_project", "project_id"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class StartupResearchNeedVersion(Base):
+    __tablename__ = "startup_research_need_versions"
+    __table_args__ = (UniqueConstraint("need_id", "version_number", name="uq_startup_research_need_versions_number"), Index("ix_startup_research_need_versions_need", "need_id", "version_number"))
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    need_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("startup_research_needs.id", ondelete="CASCADE"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    domains: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    technologies: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    research_problem: Mapped[str | None] = mapped_column(Text)
+    keywords: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ResearchMatchRun(Base):
+    __tablename__ = "research_match_runs"
+    __table_args__ = (Index("ix_research_match_runs_need_version", "need_version_id", "created_at"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    need_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("startup_research_need_versions.id", ondelete="RESTRICT"), nullable=False)
+    algorithm_id: Mapped[str] = mapped_column(String(80), nullable=False, server_default="sparse_research_matching_s3")
+    algorithm_version: Mapped[str] = mapped_column(String(30), nullable=False, server_default="1")
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="COMPLETED")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ResearchMatchResult(Base):
+    __tablename__ = "research_match_results"
+    __table_args__ = (UniqueConstraint("run_id", "rank", name="uq_research_match_results_rank"), Index("ix_research_match_results_run", "run_id", "rank"))
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_match_runs.id", ondelete="CASCADE"), nullable=False)
+    research_discovery_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_discovery_versions.id", ondelete="RESTRICT"), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    ranking_score: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="MATCH")
+    reason_codes: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    startup_field_refs: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    research_field_refs: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    uncertainty_codes: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))

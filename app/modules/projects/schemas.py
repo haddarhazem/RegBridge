@@ -154,3 +154,41 @@ class ProjectMemberResponse(BaseModel):
     member_role: MemberRole
     status: MembershipStatus
     joined_at: datetime | None
+
+
+class ResearchNeedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    domains: list[str] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
+    research_problem: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+
+
+class ResearchNeedResponse(ResearchNeedPayload):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    version_id: uuid.UUID
+    version_number: int
+
+
+class ResearchMatchResultResponse(BaseModel):
+    id: uuid.UUID
+    research_discovery_version_id: uuid.UUID
+    rank: int
+    ranking_score: float
+    status: str
+    reason_codes: list
+    startup_field_refs: list
+    research_field_refs: list
+    uncertainty_codes: list = Field(default_factory=list)
+
+
+class ResearchMatchRunResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    need_version_id: uuid.UUID
+    algorithm_id: str
+    algorithm_version: str
+    top_k: int
+    status: str
+    results: list[ResearchMatchResultResponse] = Field(default_factory=list)

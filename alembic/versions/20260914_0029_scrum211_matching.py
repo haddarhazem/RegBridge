@@ -1,0 +1,21 @@
+"""Add versioned deterministic research matching."""
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+revision = "scrum211_matching"
+down_revision = "scrum210_discovery_approval"
+branch_labels = None
+depends_on = None
+u = postgresql.UUID(as_uuid=True)
+def upgrade():
+    op.create_table("startup_research_needs", sa.Column("id",u,primary_key=True,server_default=sa.text("gen_random_uuid()")), sa.Column("project_id",u,nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),nullable=False,server_default=sa.text("now()")), sa.ForeignKeyConstraint(["project_id"],["projects.id"],ondelete="CASCADE"))
+    op.create_index("ix_startup_research_needs_project","startup_research_needs",["project_id"])
+    op.create_table("startup_research_need_versions", sa.Column("id",u,primary_key=True,server_default=sa.text("gen_random_uuid()")), sa.Column("need_id",u,nullable=False), sa.Column("version_number",sa.Integer,nullable=False), sa.Column("domains",postgresql.JSONB,nullable=False,server_default=sa.text("'[]'::jsonb")), sa.Column("technologies",postgresql.JSONB,nullable=False,server_default=sa.text("'[]'::jsonb")), sa.Column("research_problem",sa.Text), sa.Column("keywords",postgresql.JSONB,nullable=False,server_default=sa.text("'[]'::jsonb")), sa.Column("created_at",sa.DateTime(timezone=True),nullable=False,server_default=sa.text("now()")), sa.ForeignKeyConstraint(["need_id"],["startup_research_needs.id"],ondelete="CASCADE"), sa.UniqueConstraint("need_id","version_number",name="uq_startup_research_need_versions_number"))
+    op.create_index("ix_startup_research_need_versions_need","startup_research_need_versions",["need_id","version_number"])
+    op.create_table("research_match_runs", sa.Column("id",u,primary_key=True,server_default=sa.text("gen_random_uuid()")), sa.Column("project_id",u,nullable=False), sa.Column("need_version_id",u,nullable=False), sa.Column("algorithm_id",sa.String(80),nullable=False,server_default="sparse_research_matching_s3"), sa.Column("algorithm_version",sa.String(30),nullable=False,server_default="1"), sa.Column("top_k",sa.Integer,nullable=False,server_default="5"), sa.Column("status",sa.String(20),nullable=False,server_default="COMPLETED"), sa.Column("created_at",sa.DateTime(timezone=True),nullable=False,server_default=sa.text("now()")), sa.ForeignKeyConstraint(["project_id"],["projects.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["need_version_id"],["startup_research_need_versions.id"],ondelete="RESTRICT"))
+    op.create_index("ix_research_match_runs_need_version","research_match_runs",["need_version_id","created_at"])
+    op.create_table("research_match_results", sa.Column("id",u,primary_key=True,server_default=sa.text("gen_random_uuid()")), sa.Column("run_id",u,nullable=False), sa.Column("research_discovery_version_id",u,nullable=False), sa.Column("rank",sa.Integer,nullable=False), sa.Column("ranking_score",sa.Float,nullable=False), sa.Column("status",sa.String(30),nullable=False,server_default="MATCH"), sa.Column("reason_codes",postgresql.JSONB,nullable=False,server_default=sa.text("'[]'::jsonb")), sa.Column("startup_field_refs",postgresql.JSONB,nullable=False,server_default=sa.text("'[]'::jsonb")), sa.Column("research_field_refs",postgresql.JSONB,nullable=False,server_default=sa.text("'[]'::jsonb")), sa.ForeignKeyConstraint(["run_id"],["research_match_runs.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["research_discovery_version_id"],["research_discovery_versions.id"],ondelete="RESTRICT"), sa.UniqueConstraint("run_id","rank",name="uq_research_match_results_rank"))
+    op.create_index("ix_research_match_results_run","research_match_results",["run_id","rank"])
+def downgrade():
+    op.drop_index("ix_research_match_results_run",table_name="research_match_results"); op.drop_table("research_match_results"); op.drop_index("ix_research_match_runs_need_version",table_name="research_match_runs"); op.drop_table("research_match_runs"); op.drop_index("ix_startup_research_need_versions_need",table_name="startup_research_need_versions"); op.drop_table("startup_research_need_versions"); op.drop_index("ix_startup_research_needs_project",table_name="startup_research_needs"); op.drop_table("startup_research_needs")

@@ -12,10 +12,18 @@ from app.modules.projects.profile_schemas import PublicStartupProfileResponse, S
 from app.modules.projects.profile_service import StartupProfileService
 from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectFactCorrection, ProjectFactResponse, ProjectLifecycleHistoryResponse, ProjectLifecycleTransition, ProjectMemberInvite, ProjectMemberResponse, ProjectMemberUpdate, ProjectResponse, ProjectUpdate
 from app.modules.projects.service import ProjectService
+from app.modules.projects.matching_service import ResearchMatchingService
+from app.modules.projects.schemas import ResearchNeedPayload, ResearchNeedResponse, ResearchMatchRunResponse, ResearchMatchResultResponse
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 Principal = Annotated[AuthenticatedPrincipal, Depends(get_authenticated_principal)]
+
+def need_response(need, version):
+    return ResearchNeedResponse(id=need.id, project_id=need.project_id, version_id=version.id, version_number=version.version_number, domains=version.domains, technologies=version.technologies, research_problem=version.research_problem, keywords=version.keywords)
+
+def run_response(run):
+    return ResearchMatchRunResponse(id=run.id, project_id=run.project_id, need_version_id=run.need_version_id, algorithm_id=run.algorithm_id, algorithm_version=run.algorithm_version, top_k=run.top_k, status=run.status, results=[ResearchMatchResultResponse(id=x.id, research_discovery_version_id=x.research_discovery_version_id, rank=x.rank, ranking_score=x.ranking_score, status=x.status, reason_codes=x.reason_codes, startup_field_refs=x.startup_field_refs, research_field_refs=x.research_field_refs, uncertainty_codes=x.uncertainty_codes) for x in getattr(run,"results",[])])
 
 
 def project_response(project, membership) -> ProjectResponse:
@@ -62,6 +70,24 @@ def fact_response(fact) -> ProjectFactResponse:
 async def create_project(data: ProjectCreate, principal: Principal, session: Session) -> ProjectResponse:
     project = await ProjectService(session).create(principal, data)
     return project_response(project, True)
+
+@router.post("/{project_id}/research-needs", response_model=ResearchNeedResponse, status_code=status.HTTP_201_CREATED)
+async def create_research_need(project_id: uuid.UUID, data: ResearchNeedPayload, principal: Principal, session: Session):
+    return need_response(*await ResearchMatchingService(session).create_need(principal, project_id, data))
+
+@router.post("/{project_id}/research-needs/{need_id}/versions", response_model=ResearchNeedResponse, status_code=status.HTTP_201_CREATED)
+async def version_research_need(project_id: uuid.UUID, need_id: uuid.UUID, data: ResearchNeedPayload, principal: Principal, session: Session):
+    return need_response(*await ResearchMatchingService(session).version_need(principal, project_id, need_id, data))
+
+@router.post("/{project_id}/research-needs/{need_id}/match", response_model=ResearchMatchRunResponse, status_code=status.HTTP_201_CREATED)
+async def run_research_matching(project_id: uuid.UUID, need_id: uuid.UUID, principal: Principal, session: Session):
+    service = ResearchMatchingService(session)
+    run = await service.run(principal, project_id, need_id)
+    return run_response(await service.get_run(principal, project_id, run.id))
+
+@router.get("/{project_id}/research-match-runs/{run_id}", response_model=ResearchMatchRunResponse)
+async def get_research_matching_run(project_id: uuid.UUID, run_id: uuid.UUID, principal: Principal, session: Session):
+    return run_response(await ResearchMatchingService(session).get_run(principal, project_id, run_id))
 
 
 @router.post("/ideas", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)

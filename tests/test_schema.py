@@ -62,6 +62,10 @@ EXPECTED_TABLES = {
     "research_evidence_refs",
     "research_discoveries",
     "research_discovery_versions",
+    "startup_research_needs",
+    "startup_research_need_versions",
+    "research_match_runs",
+    "research_match_results",
 }
 
 
@@ -77,7 +81,7 @@ def test_alembic_has_current_head() -> None:
     script = ScriptDirectory.from_config(config)
     heads = script.get_heads()
 
-    assert heads == ["scrum210_discovery_approval"]
+    assert heads == ["scrum211_uncertainty"]
     assert script.get_revision("scrum182_conversations").down_revision == "scrum180_documents"
 
 
