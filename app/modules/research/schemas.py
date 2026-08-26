@@ -97,3 +97,31 @@ class ResearchExtractionResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     items: list[ResearchExtractionItemResponse]
+
+
+class ResearchDiscoveryInitialize(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    extraction_run_id: uuid.UUID
+
+
+class ResearchDiscoveryCorrection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fields: dict[str, list[str]] = Field(default_factory=dict)
+    visibility: dict[str, Literal["PRIVATE", "PUBLIC", "MATCHABLE"]] = Field(default_factory=dict)
+    base_version_id: uuid.UUID
+
+
+class ResearchDiscoveryResponse(BaseModel):
+    id: uuid.UUID
+    discovery_id: uuid.UUID
+    version_number: int
+    extraction_run_id: uuid.UUID
+    research_output_version_id: uuid.UUID
+    document_version_id: uuid.UUID
+    source_sha256: str
+    status: Literal["DRAFT", "APPROVED"]
+    content: dict
+    visibility: dict
+    approved_by_user_id: uuid.UUID | None
+    approved_at: datetime | None
+    created_at: datetime

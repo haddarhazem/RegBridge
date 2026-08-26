@@ -116,3 +116,34 @@ class ResearchEvidenceRef(Base):
     segment_id: Mapped[str] = mapped_column(String(40), nullable=False)
     locator: Mapped[dict] = mapped_column(JSONB, nullable=False)
     item_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ResearchDiscovery(Base):
+    __tablename__ = "research_discoveries"
+    __table_args__ = (UniqueConstraint("research_output_id", name="uq_research_discoveries_output"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    research_output_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_outputs.id", ondelete="CASCADE"), nullable=False)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ResearchDiscoveryVersion(Base):
+    __tablename__ = "research_discovery_versions"
+    __table_args__ = (
+        UniqueConstraint("discovery_id", "version_number", name="uq_research_discovery_versions_number"),
+        CheckConstraint("status IN ('DRAFT', 'APPROVED')", name="research_discovery_versions_status"),
+        Index("ix_research_discovery_versions_current", "discovery_id", "version_number"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    discovery_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_discoveries.id", ondelete="CASCADE"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    extraction_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_extraction_runs.id", ondelete="RESTRICT"), nullable=False)
+    research_output_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_output_versions.id", ondelete="RESTRICT"), nullable=False)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.id", ondelete="RESTRICT"), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    visibility: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="DRAFT")
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -63,7 +63,7 @@ def build_abstract(values: dict[str, list[str]]) -> str:
     if values["technologies"] or values["methodology"]: clauses.append(f"It reports {'; '.join((values['technologies'][:1] + values['methodology'][:1]))}")
     if values["main_results"]: clauses.append(f"The reported result is {values['main_results'][0]}")
     if values["explicit_applications"]: clauses.append(f"The source states the application {values['explicit_applications'][0]}")
-    return ". ".join(clauses) + ("." if clauses else "")
+    return ". ".join(clauses) + ("" if not clauses or clauses[-1].endswith((".", "!", "?")) else ".")
 
 
 def resolve_selection(extraction: ExtractiveExtraction, segments, version_id: str):

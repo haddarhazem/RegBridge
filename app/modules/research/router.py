@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
-from app.modules.research.schemas import ResearcherProfileResponse, ResearcherProfileUpsert, ResearchOutputCreate, ResearchOutputResponse, ResearchOutputVersionResponse, ResearchExtractionResponse, ResearchExtractionItemResponse, ResearchEvidenceResponse
+from app.modules.research.schemas import ResearcherProfileResponse, ResearcherProfileUpsert, ResearchOutputCreate, ResearchOutputResponse, ResearchOutputVersionResponse, ResearchExtractionResponse, ResearchExtractionItemResponse, ResearchEvidenceResponse, ResearchDiscoveryInitialize, ResearchDiscoveryCorrection, ResearchDiscoveryResponse
+from app.modules.research.discovery import DiscoveryService
 from app.modules.research.extraction import ResearchExtractionService
 from app.modules.research.models import ResearchEvidenceRef, ResearchExtractionItem, ResearchExtractionRun
+from app.modules.research.models import ResearchDiscoveryVersion
 from app.modules.documents.storage import get_object_storage
 from sqlalchemy import select
 from app.modules.research.service import ResearchService, missing_rights_fields
@@ -115,3 +117,48 @@ async def list_research_extractions(output_id: uuid.UUID, version_id: uuid.UUID,
     await ResearchService(session).get_version(principal, output_id, version_id)
     runs = (await session.scalars(select(ResearchExtractionRun.id).where(ResearchExtractionRun.owner_user_id == principal.user_id, ResearchExtractionRun.research_output_id == output_id, ResearchExtractionRun.research_output_version_id == version_id).order_by(ResearchExtractionRun.created_at))).all()
     return [await _extraction_response(principal, session, output_id, version_id, run_id) for run_id in runs]
+
+
+def discovery_response(version) -> ResearchDiscoveryResponse:
+    return ResearchDiscoveryResponse(id=version.id, discovery_id=version.discovery_id, version_number=version.version_number, extraction_run_id=version.extraction_run_id, research_output_version_id=version.research_output_version_id, document_version_id=version.document_version_id, source_sha256=version.source_sha256, status=version.status, content=version.content, visibility=version.visibility, approved_by_user_id=version.approved_by_user_id, approved_at=version.approved_at, created_at=version.created_at)
+
+
+@router.post("/research/discoveries", response_model=ResearchDiscoveryResponse, status_code=status.HTTP_201_CREATED)
+async def initialize_discovery(data: ResearchDiscoveryInitialize, principal: Principal, session: Session):
+    return discovery_response(await DiscoveryService(session).initialize(principal, data.extraction_run_id))
+
+
+@router.get("/research/discoveries/{discovery_id}/current", response_model=ResearchDiscoveryResponse)
+async def current_discovery(discovery_id: uuid.UUID, principal: Principal, session: Session):
+    return discovery_response(await DiscoveryService(session)._version(principal, discovery_id))
+
+
+@router.get("/research/discoveries/{discovery_id}/versions", response_model=list[ResearchDiscoveryResponse])
+async def discovery_versions(discovery_id: uuid.UUID, principal: Principal, session: Session):
+    await DiscoveryService(session)._owned(principal, discovery_id)
+    return [discovery_response(v) for v in (await session.scalars(select(ResearchDiscoveryVersion).where(ResearchDiscoveryVersion.discovery_id == discovery_id).order_by(ResearchDiscoveryVersion.version_number))).all()]
+
+
+@router.get("/research/discoveries/{discovery_id}/versions/{version_id}", response_model=ResearchDiscoveryResponse)
+async def discovery_version(discovery_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    return discovery_response(await DiscoveryService(session)._version(principal, discovery_id, version_id))
+
+
+@router.post("/research/discoveries/{discovery_id}/versions", response_model=ResearchDiscoveryResponse, status_code=status.HTTP_201_CREATED)
+async def correct_discovery(discovery_id: uuid.UUID, data: ResearchDiscoveryCorrection, principal: Principal, session: Session):
+    return discovery_response(await DiscoveryService(session).correct(principal, discovery_id, data.base_version_id, {"fields": data.fields}, data.visibility or None))
+
+
+@router.post("/research/discoveries/{discovery_id}/versions/{version_id}/approve", response_model=ResearchDiscoveryResponse)
+async def approve_discovery(discovery_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    return discovery_response(await DiscoveryService(session).approve(principal, discovery_id, version_id))
+
+
+@router.get("/public/research/discoveries/{discovery_id}")
+async def public_discovery(discovery_id: uuid.UUID, session: Session):
+    return await DiscoveryService(session).public(discovery_id)
+
+
+@router.get("/research/discoveries/{discovery_id}/matchable")
+async def matchable_discovery(discovery_id: uuid.UUID, principal: Principal, session: Session):
+    return await DiscoveryService(session).matchable(principal, discovery_id)
