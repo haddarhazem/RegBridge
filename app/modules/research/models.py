@@ -147,3 +147,28 @@ class ResearchDiscoveryVersion(Base):
     approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ResearchAccessRequest(Base):
+    __tablename__ = "research_access_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING', 'ACCEPTED', 'LIMITED', 'REFUSED', 'REVOKED')", name="research_access_requests_status"),
+        Index("ix_research_access_requests_output_status", "research_output_id", "status"),
+        Index("ix_research_access_requests_requester_created", "requester_user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    research_output_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_outputs.id", ondelete="CASCADE"), nullable=False)
+    research_output_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("research_output_versions.id", ondelete="RESTRICT"))
+    research_discovery_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("research_discovery_versions.id", ondelete="RESTRICT"))
+    requester_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    requester_project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
+    requested_scopes: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    granted_scopes: Mapped[list | None] = mapped_column(JSONB)
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="PENDING")
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

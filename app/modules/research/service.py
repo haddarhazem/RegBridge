@@ -16,6 +16,7 @@ from app.modules.documents.storage import ObjectStorage, get_object_storage
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.research.models import ResearchOutput, ResearchOutputVersion, ResearcherProfile
 from app.modules.research.schemas import ResearchOutputCreate, ResearcherProfileUpsert
+from app.modules.research.access_service import ResearchAccessService
 
 
 def missing_rights_fields(rights_holder: str | None, licence: str | None) -> list[str]:
@@ -125,7 +126,12 @@ class ResearchService:
         return result
 
     async def get_version(self, actor: AuthenticatedPrincipal, output_id: uuid.UUID, version_id: uuid.UUID) -> tuple[ResearchOutputVersion, DocumentVersion]:
-        await self._owned_output(actor, output_id)
+        output = await self.session.get(ResearchOutput, output_id)
+        if output is None:
+            raise HTTPException(status_code=404, detail="Research output not found")
+        owner = await self.session.scalar(select(ResearchOutput.id).join(ResearcherProfile).where(ResearchOutput.id == output_id, ResearcherProfile.user_id == actor.user_id))
+        if owner is None and not await ResearchAccessService(self.session).has_scope(actor, output_id=output_id, output_version_id=version_id, scope="FULL_DOCUMENT_READ"):
+            raise HTTPException(status_code=404, detail="Research output version not found")
         row = await self.session.execute(select(ResearchOutputVersion, DocumentVersion).join(DocumentVersion, DocumentVersion.id == ResearchOutputVersion.document_version_id).where(ResearchOutputVersion.research_output_id == output_id, ResearchOutputVersion.id == version_id))
         result = row.first()
         if result is None:
@@ -134,7 +140,14 @@ class ResearchService:
 
     async def download(self, actor: AuthenticatedPrincipal, output_id: uuid.UUID, version_id: uuid.UUID) -> tuple[DocumentVersion, AsyncIterator[bytes]]:
         _, version = await self.get_version(actor, output_id, version_id)
-        document, selected, stream = await self.documents.download(actor, version.document_id, version.id)
+        owner = await self.session.scalar(select(ResearchOutput.id).join(ResearcherProfile).where(ResearchOutput.id == output_id, ResearcherProfile.user_id == actor.user_id))
+        if owner is not None:
+            _, selected, stream = await self.documents.download(actor, version.document_id, version.id)
+        else:
+            document = await self.session.get(Document, version.document_id)
+            if document is None or version.malware_scan_status != "clean":
+                raise HTTPException(status_code=403, detail="Research document is not available")
+            selected, stream = version, self.documents.storage.stream(version.storage_key)
         self.session.add(AuditLog(actor_user_id=actor.user_id, actor_type="user", action="research_output.version_accessed", resource_type="research_output_version", resource_id=version_id, metadata_json={"research_output_id": str(output_id), "document_version_id": str(selected.id)}))
         await self.session.commit()
         return selected, stream

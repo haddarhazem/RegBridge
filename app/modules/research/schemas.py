@@ -125,3 +125,41 @@ class ResearchDiscoveryResponse(BaseModel):
     approved_by_user_id: uuid.UUID | None
     approved_at: datetime | None
     created_at: datetime
+
+
+ResearchAccessScope = Literal["CONTACT", "DISCOVERY_READ", "FULL_DOCUMENT_READ", "COLLABORATION"]
+ResearchAccessStatus = Literal["PENDING", "ACCEPTED", "LIMITED", "REFUSED", "REVOKED"]
+
+
+class ResearchAccessRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    research_output_id: uuid.UUID
+    research_output_version_id: uuid.UUID | None = None
+    research_discovery_version_id: uuid.UUID | None = None
+    requester_project_id: uuid.UUID | None = None
+    requested_scopes: list[ResearchAccessScope] = Field(min_length=1, max_length=4)
+    message: str | None = Field(default=None, max_length=1000)
+
+
+class ResearchAccessDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    granted_scopes: list[ResearchAccessScope] | None = None
+
+
+class ResearchAccessRequestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    research_output_id: uuid.UUID
+    research_output_version_id: uuid.UUID | None
+    research_discovery_version_id: uuid.UUID | None
+    requester_user_id: uuid.UUID
+    requester_project_id: uuid.UUID | None
+    requested_scopes: list[str]
+    granted_scopes: list[str] | None
+    status: ResearchAccessStatus
+    message: str | None
+    decided_by_user_id: uuid.UUID | None
+    decided_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

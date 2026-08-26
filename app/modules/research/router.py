@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
-from app.modules.research.schemas import ResearcherProfileResponse, ResearcherProfileUpsert, ResearchOutputCreate, ResearchOutputResponse, ResearchOutputVersionResponse, ResearchExtractionResponse, ResearchExtractionItemResponse, ResearchEvidenceResponse, ResearchDiscoveryInitialize, ResearchDiscoveryCorrection, ResearchDiscoveryResponse
+from app.modules.research.schemas import ResearcherProfileResponse, ResearcherProfileUpsert, ResearchOutputCreate, ResearchOutputResponse, ResearchOutputVersionResponse, ResearchExtractionResponse, ResearchExtractionItemResponse, ResearchEvidenceResponse, ResearchDiscoveryInitialize, ResearchDiscoveryCorrection, ResearchDiscoveryResponse, ResearchAccessDecision, ResearchAccessRequestCreate, ResearchAccessRequestResponse
 from app.modules.research.discovery import DiscoveryService
 from app.modules.research.extraction import ResearchExtractionService
 from app.modules.research.models import ResearchEvidenceRef, ResearchExtractionItem, ResearchExtractionRun
@@ -17,6 +17,7 @@ from app.modules.research.models import ResearchDiscoveryVersion
 from app.modules.documents.storage import get_object_storage
 from sqlalchemy import select
 from app.modules.research.service import ResearchService, missing_rights_fields
+from app.modules.research.access_service import ResearchAccessService
 
 router = APIRouter(tags=["research"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -123,6 +124,42 @@ def discovery_response(version) -> ResearchDiscoveryResponse:
     return ResearchDiscoveryResponse(id=version.id, discovery_id=version.discovery_id, version_number=version.version_number, extraction_run_id=version.extraction_run_id, research_output_version_id=version.research_output_version_id, document_version_id=version.document_version_id, source_sha256=version.source_sha256, status=version.status, content=version.content, visibility=version.visibility, approved_by_user_id=version.approved_by_user_id, approved_at=version.approved_at, created_at=version.created_at)
 
 
+def access_request_response(item) -> ResearchAccessRequestResponse:
+    values = {field: item.__dict__.get(field) for field in ResearchAccessRequestResponse.model_fields}
+    values["updated_at"] = values["updated_at"] or values["created_at"]
+    return ResearchAccessRequestResponse.model_validate(values)
+
+
+@router.post("/research/access-requests", response_model=ResearchAccessRequestResponse, status_code=status.HTTP_201_CREATED)
+async def create_research_access_request(data: ResearchAccessRequestCreate, principal: Principal, session: Session):
+    return access_request_response(await ResearchAccessService(session).create(principal, data))
+
+
+@router.get("/research/access-requests/{request_id}", response_model=ResearchAccessRequestResponse)
+async def get_research_access_request(request_id: uuid.UUID, principal: Principal, session: Session):
+    return access_request_response(await ResearchAccessService(session).get(principal, request_id))
+
+
+@router.post("/research/access-requests/{request_id}/accept", response_model=ResearchAccessRequestResponse)
+async def accept_research_access_request(request_id: uuid.UUID, principal: Principal, session: Session):
+    return access_request_response(await ResearchAccessService(session).decide(principal, request_id, "ACCEPTED", ResearchAccessDecision()))
+
+
+@router.post("/research/access-requests/{request_id}/limit", response_model=ResearchAccessRequestResponse)
+async def limit_research_access_request(request_id: uuid.UUID, data: ResearchAccessDecision, principal: Principal, session: Session):
+    return access_request_response(await ResearchAccessService(session).decide(principal, request_id, "LIMITED", data))
+
+
+@router.post("/research/access-requests/{request_id}/refuse", response_model=ResearchAccessRequestResponse)
+async def refuse_research_access_request(request_id: uuid.UUID, principal: Principal, session: Session):
+    return access_request_response(await ResearchAccessService(session).decide(principal, request_id, "REFUSED", ResearchAccessDecision()))
+
+
+@router.post("/research/access-requests/{request_id}/revoke", response_model=ResearchAccessRequestResponse)
+async def revoke_research_access_request(request_id: uuid.UUID, principal: Principal, session: Session):
+    return access_request_response(await ResearchAccessService(session).revoke(principal, request_id))
+
+
 @router.post("/research/discoveries", response_model=ResearchDiscoveryResponse, status_code=status.HTTP_201_CREATED)
 async def initialize_discovery(data: ResearchDiscoveryInitialize, principal: Principal, session: Session):
     return discovery_response(await DiscoveryService(session).initialize(principal, data.extraction_run_id))
@@ -162,3 +199,8 @@ async def public_discovery(discovery_id: uuid.UUID, session: Session):
 @router.get("/research/discoveries/{discovery_id}/matchable")
 async def matchable_discovery(discovery_id: uuid.UUID, principal: Principal, session: Session):
     return await DiscoveryService(session).matchable(principal, discovery_id)
+
+
+@router.get("/research/discoveries/{discovery_id}/versions/{version_id}/access")
+async def granted_discovery_version(discovery_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session):
+    return await DiscoveryService(session).granted(principal, discovery_id, version_id)

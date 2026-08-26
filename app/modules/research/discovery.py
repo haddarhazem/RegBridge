@@ -13,6 +13,8 @@ from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.research.models import (ResearchDiscovery, ResearchDiscoveryVersion, ResearchEvidenceRef,
     ResearchExtractionItem, ResearchExtractionRun, ResearchOutput, ResearchOutputVersion)
 from app.modules.research.extraction import FIELDS, build_abstract
+from app.modules.research.access_service import ResearchAccessService
+from app.modules.sharing.models import InvestorShareGrant
 
 VISIBILITIES = {"PRIVATE", "PUBLIC", "MATCHABLE"}
 
@@ -100,3 +102,13 @@ class DiscoveryService:
         if version.status != "APPROVED":
             raise HTTPException(404, "Approved research discovery not found")
         return {"discovery_id": discovery_id, "version_id": version.id, "fields": {field: values for field, values in version.content["fields"].items() if version.visibility.get(field) == "MATCHABLE"}}
+
+    async def granted(self, actor, discovery_id, version_id):
+        version = await self.session.scalar(select(ResearchDiscoveryVersion).where(ResearchDiscoveryVersion.id == version_id, ResearchDiscoveryVersion.discovery_id == discovery_id, ResearchDiscoveryVersion.status == "APPROVED"))
+        if version is None or not await ResearchAccessService(self.session).has_scope(actor, discovery_version_id=version.id, scope="DISCOVERY_READ"):
+            raise HTTPException(404, "Research discovery version not found")
+        fields = {field: values for field, values in version.content.get("fields", {}).items() if version.visibility.get(field) in {"PUBLIC", "MATCHABLE"}}
+        grant = await self.session.scalar(select(InvestorShareGrant).where(InvestorShareGrant.recipient_user_id == actor.user_id, InvestorShareGrant.resource_type == "RESEARCH_DISCOVERY_VERSION", InvestorShareGrant.resource_id == version.id, InvestorShareGrant.resource_version_id == version.id, InvestorShareGrant.scope == "DISCOVERY_READ", InvestorShareGrant.status == "ACTIVE"))
+        self.session.add(AuditLog(actor_user_id=actor.user_id, actor_type="user", action="RESEARCH_DISCOVERY_ACCESSED", resource_type="research_discovery_version", resource_id=version.id, project_id=grant.project_id if grant else None, metadata_json={"grant_id": str(grant.id) if grant else None, "scope": "DISCOVERY_READ", "result": "allowed"}))
+        await self.session.commit()
+        return {"discovery_id": discovery_id, "version_id": version.id, "version_number": version.version_number, "fields": fields}
