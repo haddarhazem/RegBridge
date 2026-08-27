@@ -47,7 +47,17 @@ Related Jira: SCRUM-186
 **PLANNED / FUTURE.** How robust is document/RAG-grounded execution against
 indirect prompt injection? Potential metrics include attack success rate, task
 completion rate, citation integrity, and false refusal rate. Do not implement
-this question now.
+this legacy question; SCRUM-213 records the scoped study as RQ-027 / EX-027.
+
+## RQ-027 - Prompt-injection defense-in-depth
+
+Which minimal defense-in-depth strategy reduces prompt-injection following and
+unauthorized tool/RAG behavior while preserving legitimate RegBridge task
+completion?
+
+Candidates: P0 current production baseline, P1 explicit trusted/untrusted
+context separation, and bounded P2 quarantine only if DEV evidence justifies
+it. Related experiments: EX-027 and EX-027-R1. Decisions: RD-022 and RD-023.
 
 ## Later planned questions
 
