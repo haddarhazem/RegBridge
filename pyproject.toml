@@ -40,6 +40,14 @@ research = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+  "critical: release-critical deterministic or integration coverage",
+  "e2e: production-boundary end-to-end coverage",
+  "external: optional test requiring a configured external service",
+  "live_provider: optional live LLM provider test",
+  "live_qdrant: optional read-only Qdrant test",
+  "real_document: optional test using a real public document fixture",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
