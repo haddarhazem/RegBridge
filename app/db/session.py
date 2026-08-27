@@ -5,6 +5,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.core.observability import dependency_result, elapsed_ms
+import time
 
 
 @lru_cache
@@ -24,5 +26,11 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 async def check_database() -> None:
     """Execute a real lightweight query to verify PostgreSQL connectivity."""
-    async with get_engine().connect() as connection:
-        await connection.execute(text("SELECT 1"))
+    started = time.perf_counter()
+    try:
+        async with get_engine().connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception:
+        dependency_result(dependency="postgresql", operation="health_check", status="error", duration_ms=elapsed_ms(started), error_category="DEPENDENCY_UNAVAILABLE")
+        raise
+    dependency_result(dependency="postgresql", operation="health_check", status="ok", duration_ms=elapsed_ms(started))

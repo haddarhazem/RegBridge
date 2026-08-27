@@ -1,11 +1,9 @@
-import logging
-
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.db.session import check_database
+from app.core.observability import emit_event
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -14,7 +12,7 @@ async def health() -> JSONResponse:
     try:
         await check_database()
     except Exception:
-        logger.exception("Database health check failed")
+        emit_event("health.database.failed", component="postgresql", operation="health_check", status="error", error_code="DEPENDENCY_UNAVAILABLE")
         return JSONResponse(
             status_code=503,
             content={"status": "degraded", "database": "unavailable"},

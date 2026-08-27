@@ -1,0 +1,16 @@
+{
+  "experiment_id": "EX-028",
+  "ticket": "SCRUM-215",
+  "frozen": true,
+  "scenarios": [
+    {"scenario_id":"F1","failure":"PostgreSQL unavailable","target":"postgresql","signal":"dependency.operation:error","localization":"postgresql","runbook":"postgresql.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F2","failure":"Qdrant unavailable","target":"qdrant","signal":"dependency.operation:error","localization":"qdrant","runbook":"qdrant.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F3","failure":"Object storage unavailable","target":"object_storage","signal":"dependency.operation:error","localization":"object_storage","runbook":"storage.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F4","failure":"LLM provider unavailable","target":"mistral","signal":"dependency.operation:error","localization":"mistral","runbook":"llm-provider.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F5","failure":"LLM provider timeout","target":"mistral","signal":"dependency.operation:error","localization":"mistral","runbook":"llm-provider.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F6","failure":"Invalid provider response","target":"mistral","signal":"dependency.operation:error","localization":"mistral","runbook":"llm-provider.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F7","failure":"Agent/RAG timeout","target":"qdrant","signal":"dependency.operation:error","localization":"qdrant","runbook":"partial-genai.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F8","failure":"Partial multi-step GenAI failure","target":"genai","signal":"agent_run.transitioned:error","localization":"genai child run","runbook":"partial-genai.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]},
+    {"scenario_id":"F9","failure":"Worker/async failure","target":"worker","signal":"not_applicable","localization":"not_applicable","runbook":"worker.md","forbidden":["RB_OBS_PRIVATE_DOC_X81Q","RB_OBS_APIKEY_Z72P","RB_OBS_BEARER_T61M","RB_OBS_PRIVATE_RAG_C54K"]}
+  ]
+}

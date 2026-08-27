@@ -9,6 +9,8 @@ from qdrant_client import QdrantClient
 
 from app.core.config import Settings, get_settings
 from app.modules.regulatory.contracts import RegulatoryEvidence
+from app.core.observability import dependency_result, elapsed_ms, emit_event
+import time
 
 
 class RegulatoryRetrievalError(RuntimeError):
@@ -83,6 +85,7 @@ class RegulatoryRetriever:
         self.collection = collection
 
     async def retrieve(self, question: str) -> list[RegulatoryEvidence]:
+        started = time.perf_counter()
         try:
             vector = self.embedder.encode(question)
             if len(vector) != self.vector_dimension:
@@ -96,8 +99,10 @@ class RegulatoryRetriever:
             )
             points = getattr(response, "points", [])
         except RegulatoryRetrievalError:
+            dependency_result(dependency="qdrant", operation="retrieve", status="error", duration_ms=elapsed_ms(started), error_category="RAG_ERROR")
             raise
         except Exception as exc:
+            dependency_result(dependency="qdrant", operation="retrieve", status="error", duration_ms=elapsed_ms(started), error_category="DEPENDENCY_UNAVAILABLE")
             raise RegulatoryRetrievalError("Regulatory retrieval service is unavailable") from exc
 
         evidence: list[RegulatoryEvidence] = []
@@ -117,6 +122,8 @@ class RegulatoryRetriever:
                 chunk_index=payload.get("chunk_index") if isinstance(payload.get("chunk_index"), int) and payload.get("chunk_index") >= 0 else None,
                 content=payload["content"].strip()[:12000],
             ))
+        dependency_result(dependency="qdrant", operation="retrieve", status="ok", duration_ms=elapsed_ms(started))
+        emit_event("qdrant.retrieval.completed", component="qdrant", operation="retrieve", status="ok", result_count=len(evidence))
         return evidence
 
 

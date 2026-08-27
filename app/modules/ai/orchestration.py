@@ -16,6 +16,7 @@ from app.modules.ai.contracts import (
 )
 from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace, TraceResourceRef, TraceSourceRef
 from app.modules.ai.services import AgentRunService
+from app.core.observability import emit_event
 
 
 class IntentClassifier(Protocol):
@@ -149,6 +150,7 @@ class Orchestrator:
         return run.id
 
     async def run(self, request: OrchestrationRequest) -> OrchestrationResult:
+        emit_event("orchestration.started", component="orchestrator", operation="run", status="started", capability="orchestration")
         root_id = await self._create_run(request, agent_name="orchestrator", capability="orchestration")
         try:
             decision = await self.classifier.classify(request)
@@ -160,6 +162,7 @@ class Orchestrator:
                 return outcome
 
             capabilities = [selection.capability for selection in selections]
+            emit_event("orchestration.routed", component="orchestrator", operation="route", status="ok", capability=capabilities)
             if not selections:
                 outcome = OrchestrationResult(request_id=request.request_id, status="unsupported", warnings=["Intent is not supported"])
                 await self.agent_run_service.succeed_run(root_id, self._root_trace(outcome))
@@ -212,6 +215,7 @@ class Orchestrator:
                     await self.agent_run_service.fail_run(child_id, error_code=failure.error_code or "agent_execution_failed", error_message="Agent execution failed")
 
             outcome = self.aggregator.aggregate(request, capabilities, successes, failures)
+            emit_event("orchestration.completed", component="orchestrator", operation="run", status=outcome.status, result_count=len(successes), failure_count=len(failures))
             await self.agent_run_service.succeed_run(root_id, self._root_trace(outcome))
             return outcome
         except Exception:

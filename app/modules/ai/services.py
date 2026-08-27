@@ -15,6 +15,7 @@ from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace, 
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.authorization import ProjectAuthorizationPolicy
 from app.modules.projects.models import Project, ProjectMember
+from app.core.observability import emit_event, metrics
 
 
 class ConversationService:
@@ -128,7 +129,10 @@ class AgentRunService:
                     raise ValueError("Child run must use the parent request_id")
             if status not in {"queued", "running"}:
                 raise ValueError("Runs may only be created queued or running")
-            return await self.repository.create_run(request_id=request_id, parent_run_id=parent_run_id, user_id=user_id, message_id=message_id, agent_name=agent_name, capability=capability, subject_type=subject_type, subject_id=subject_id, request_payload=request_json, model_metadata=model_json, prompt_version=prompt_version, status=status)
+            run = await self.repository.create_run(request_id=request_id, parent_run_id=parent_run_id, user_id=user_id, message_id=message_id, agent_name=agent_name, capability=capability, subject_type=subject_type, subject_id=subject_id, request_payload=request_json, model_metadata=model_json, prompt_version=prompt_version, status=status)
+            metrics.increment("regbridge_agent_runs_total", component="genai", operation="create", status=status)
+            emit_event("agent_run.created", component="genai", operation="create", status=status, run_id=str(run.id), parent_run_id=str(parent_run_id) if parent_run_id else None, agent_name=agent_name, capability=capability)
+            return run
 
     async def _transition(self, run_id: uuid.UUID, target: str, *, response_payload=None, error_code: str | None = None, error_message: str | None = None) -> AgentRun:
         if self.session.in_transaction():
@@ -148,6 +152,8 @@ class AgentRunService:
                 run.error_code = error_code[:80] if error_code else "run_failed"
                 run.error_message = _safe_error_message(error_message or "Agent run failed")
             await self.session.flush()
+            metrics.increment("regbridge_agent_runs_total", component="genai", operation="transition", status=target)
+            emit_event("agent_run.transitioned", component="genai", operation="transition", status=target, run_id=str(run.id), error_code=run.error_code)
             return run
 
     async def start_run(self, run_id: uuid.UUID) -> AgentRun:

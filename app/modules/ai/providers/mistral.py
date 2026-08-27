@@ -18,6 +18,7 @@ from app.modules.ai.llm import (
     LLMExecutionMetadata,
     LLMProviderUnavailableError,
 )
+from app.core.observability import dependency_result, elapsed_ms, emit_event
 
 
 class MistralLLMProvider:
@@ -43,6 +44,7 @@ class MistralLLMProvider:
                 response_format=request.response_format,
             )
         except Exception as exc:
+            dependency_result(dependency="mistral", operation=request.operation, status="error", duration_ms=elapsed_ms(started), error_category="DEPENDENCY_UNAVAILABLE")
             error = LLMProviderUnavailableError("Mistral generation service is unavailable", category="provider_unavailable")
             error.duration_ms = (time.perf_counter() - started) * 1000
             error.provider = "mistral"
@@ -62,6 +64,7 @@ class MistralLLMProvider:
         except LLMGenerationError:
             raise
         except Exception as exc:
+            dependency_result(dependency="mistral", operation=request.operation, status="error", duration_ms=elapsed_ms(started), error_category="INVALID_PROVIDER_RESPONSE")
             error = LLMGenerationError("Mistral returned an invalid response", category="provider_generation_error")
             error.duration_ms = (time.perf_counter() - started) * 1000
             error.provider = "mistral"
@@ -74,6 +77,8 @@ class MistralLLMProvider:
 
         duration_ms = (time.perf_counter() - started) * 1000
         usage = _safe_usage(getattr(response, "usage", None))
+        dependency_result(dependency="mistral", operation=request.operation, status="ok", duration_ms=duration_ms)
+        emit_event("llm.generation.completed", component="llm", operation=request.operation, status="ok", provider="mistral", model=self.model, prompt_version=request.prompt_version, retry_count=0, prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"), total_tokens=usage.get("total_tokens"))
         execution = LLMExecutionMetadata(
             provider="mistral",
             logical_model=self.model,
