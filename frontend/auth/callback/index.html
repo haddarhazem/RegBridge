@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion en cours &mdash; RegBridge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/auth/auth.css">
+    <script defer src="/vendor/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script defer src="/auth/auth-runtime.js"></script>
+    <script defer src="/auth/auth.js"></script>
+  </head>
+  <body class="auth-page" data-auth-page="callback">
+    <div class="global-background" aria-hidden="true"><span class="scan-line"></span></div>
+    <a class="skip-link" href="#auth-content">Aller au contenu</a>
+    <header class="auth-header"><a class="wordmark" href="/" aria-label="RegBridge, accueil"><span class="mark" aria-hidden="true">RB</span><span>RegBridge</span></a></header>
+    <main id="auth-content" class="auth-layout">
+      <section class="auth-visual callback-visual" aria-labelledby="callback-visual-title"><div class="auth-core callback-core" aria-hidden="true"><strong>RB</strong><small>REGBRIDGE</small></div><div class="auth-visual-copy"><p class="auth-eyebrow">CONNEXION SÉCURISÉE</p><h2 id="callback-visual-title">Un compte.<br>Plusieurs espaces.</h2></div></section>
+      <section class="auth-panel" aria-labelledby="callback-title"><div class="auth-panel-inner auth-mode-transition"><p class="auth-eyebrow">RETOUR FOURNISSEUR</p><h1 id="callback-title" class="auth-title">Connexion<br>en cours.</h1><p class="auth-description">RegBridge valide votre session puis prépare votre espace.</p><div class="auth-state" data-auth-state data-state="loading" role="status" aria-live="polite">Validation sécurisée du retour fournisseur…</div><p class="auth-note">Aucun code ni jeton n’est affiché sur cette page.</p></div></section>
+    </main>
+  </body>
+</html>

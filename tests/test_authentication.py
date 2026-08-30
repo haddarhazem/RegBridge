@@ -8,9 +8,11 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.core.config import Settings
 from app.main import app
-from app.modules.identity.auth import OIDCValidator
+from app.modules.identity import dependencies as identity_dependencies
+from app.modules.identity.auth import InvalidAccessTokenError, OIDCValidator
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
+from app.modules.identity.service import IdentityProvisioningService
 
 
 @pytest.fixture
@@ -48,6 +50,23 @@ async def test_me_without_token_returns_401() -> None:
 
 
 @pytest.mark.asyncio
+async def test_invalid_token_cannot_reach_first_login_provisioning(monkeypatch) -> None:
+    class RejectingValidator:
+        async def validate(self, _: str):
+            raise InvalidAccessTokenError("invalid")
+
+    provision = AsyncMock()
+    monkeypatch.setattr(identity_dependencies, "get_token_validator", lambda: RejectingValidator())
+    monkeypatch.setattr(IdentityProvisioningService, "resolve_or_provision", provision)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/me", headers={"Authorization": "Bearer invalid-test-value"})
+
+    assert response.status_code == 401
+    provision.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_me_returns_business_identity_and_multiple_database_roles() -> None:
     principal = AuthenticatedPrincipal(
         user_id=uuid.uuid4(),
@@ -64,6 +83,7 @@ async def test_me_returns_business_identity_and_multiple_database_roles() -> Non
 
     assert response.status_code == 200
     assert response.json()["roles"] == ["entrepreneur", "researcher"]
+    assert response.json()["needs_role_onboarding"] is False
     assert "provider" not in response.json()
 
 

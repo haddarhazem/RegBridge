@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Choisir vos rôles &mdash; RegBridge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/auth/auth.css">
+    <script defer src="/vendor/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script defer src="/auth/auth-runtime.js"></script>
+    <script defer src="/auth/auth.js"></script>
+  </head>
+  <body class="auth-page" data-auth-page="onboarding">
+    <div class="global-background" aria-hidden="true"><span class="scan-line"></span><svg viewBox="0 0 1440 900" preserveAspectRatio="none"><path class="path path-b" d="M0 680H260L490 430H820L1080 700H1440"/><path class="path path-c" d="M0 465H440L650 250H1100L1280 465H1440"/></svg></div>
+    <a class="skip-link" href="#auth-content">Aller au contenu</a>
+    <header class="auth-header"><a class="wordmark" href="/" aria-label="RegBridge, accueil"><span class="mark" aria-hidden="true">RB</span><span>RegBridge</span></a><nav aria-label="Navigation authentification"><a href="/">Retour à l'accueil</a><button type="button" data-auth-signout>Se déconnecter</button></nav></header>
+    <main id="auth-content" class="auth-layout">
+      <section class="auth-visual" data-auth-visual data-mode="roles" aria-labelledby="visual-roles-title">
+        <div class="auth-visual-copy"><p class="auth-eyebrow">UN COMPTE. TROIS TRAJECTOIRES.</p><h2 id="visual-roles-title">Choisissez vos<br>trajectoires.</h2><p>Chaque rôle reste contrôlé par RegBridge et peut être combiné dans un seul compte.</p></div>
+        <div class="auth-network" aria-hidden="true"><svg class="auth-network-lines" viewBox="0 0 720 390" preserveAspectRatio="none"><path d="M360 205L360 54"/><path d="M360 205L112 218"/><path d="M360 205L608 218"/><path d="M360 205L360 345"/></svg><div class="auth-core"><strong>RB</strong><small>REGBRIDGE</small></div><div class="auth-pathway pathway-startup" data-pathway="entrepreneur"><strong>STARTUP</strong><small>PROJET</small></div><div class="auth-pathway pathway-investor" data-pathway="investor"><strong>INVESTISSEUR</strong><small>CAPITAL</small></div><div class="auth-pathway pathway-researcher" data-pathway="researcher"><strong>CHERCHEUR</strong><small>RECHERCHE</small></div><div class="auth-network-foundation">PREUVES / ACCÈS</div></div>
+      </section>
+      <section class="auth-panel" aria-labelledby="roles-title"><div class="auth-panel-inner auth-mode-transition"><p class="auth-eyebrow">RÔLES MÉTIER</p><h1 id="roles-title" class="auth-title">Comment souhaitez-vous utiliser RegBridge&nbsp;?</h1><p class="auth-description">Sélectionnez un ou plusieurs rôles. Vous pourrez choisir votre espace actif sans créer un autre compte.</p><p class="auth-note">Compte&nbsp;: <strong data-auth-user>&mdash;</strong></p><div class="auth-state" data-auth-state data-state="loading" role="status" aria-live="polite">Vérification de votre session…</div><fieldset class="role-fieldset"><legend>Rôles disponibles</legend><div class="role-list" data-role-options></div></fieldset><div class="role-actions"><button class="auth-submit" type="button" data-role-submit disabled>Continuer</button></div><div class="auth-trust" aria-label="Principes de confiance"><span><b>01</b>Un compte</span><span><b>02</b>Rôles contrôlés</span><span><b>03</b>Privé par défaut</span></div></div></section>
+    </main>
+  </body>
+</html>

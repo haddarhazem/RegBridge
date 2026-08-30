@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import uuid
+import unicodedata
 from dataclasses import dataclass
 from typing import Protocol
 
 from fastapi import HTTPException, status
 
 from app.modules.ai.contracts import AuthorizedContext, OrchestrationRequest
+from app.modules.ai.projections import AssessmentProjection, RoadmapProjection
 from app.modules.identity.schemas import AuthenticatedPrincipal
 
 
@@ -38,12 +40,43 @@ class ProjectContextProjection:
     target_market: str | None = None
     location: str | None = None
     facts: tuple[ProjectFactProjection, ...] = ()
+    assessment: AssessmentProjection | None = None
+    roadmap: RoadmapProjection | None = None
 
 
 class ProjectContextRepository(Protocol):
     async def has_active_membership(self, project_id: uuid.UUID, user_id: uuid.UUID) -> bool: ...
 
     async def load_minimal_projection(self, project_id: uuid.UUID) -> ProjectContextProjection | None: ...
+
+    async def load_latest_assessment_projection(self, project_id: uuid.UUID) -> AssessmentProjection | None: ...
+
+    async def load_latest_roadmap_projection(self, project_id: uuid.UUID) -> RoadmapProjection | None: ...
+
+
+def _normalized_question(question: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKD", question.lower())
+        if not unicodedata.combining(character)
+    )
+
+
+def requests_assessment_context(question: str) -> bool:
+    normalized = _normalized_question(question)
+    return any(term in normalized for term in (
+        "mon evaluation", "cette obligation", "pourquoi cette obligation",
+        "cette recommandation", "mon incertitude", "incertitudes",
+        "explique mon evaluation", "evaluation reglementaire",
+    ))
+
+
+def requests_roadmap_context(question: str) -> bool:
+    normalized = _normalized_question(question)
+    return any(term in normalized for term in (
+        "roadmap", "etape", "prochaine etape", "prochaines etapes", "etapes encore",
+        "etapes a faire", "que dois-je faire ensuite", "que faire ensuite",
+    ))
 
 
 class ProjectAuthorizationService:
@@ -71,6 +104,16 @@ class AuthorizedContextBuilder:
         projection = await self.repository.load_minimal_projection(request.subject_id)
         if projection is None:
             raise ContextAuthorizationError("Project context access denied")
+        assessment = None
+        roadmap = None
+        if requests_assessment_context(request.question):
+            loader = getattr(self.repository, "load_latest_assessment_projection", None)
+            if loader is not None:
+                assessment = await loader(request.subject_id)
+        if requests_roadmap_context(request.question):
+            loader = getattr(self.repository, "load_latest_roadmap_projection", None)
+            if loader is not None:
+                roadmap = await loader(request.subject_id)
         return AuthorizedContext(
             subject_type="project",
             subject_id=request.subject_id,
@@ -84,6 +127,8 @@ class AuthorizedContextBuilder:
             target_market=projection.target_market,
             location=projection.location,
             facts=[{"domain": fact.domain, "value": fact.value, "origin": fact.origin, "status": fact.status, "provenance": fact.provenance, "uncertainty": fact.uncertainty} for fact in projection.facts],
+            assessment=assessment,
+            roadmap=roadmap,
         )
 
 

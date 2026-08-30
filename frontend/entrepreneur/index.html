@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Espace entrepreneur — RegBridge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/entrepreneur/entrepreneur.css">
+    <script defer src="/vendor/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script defer src="/auth/auth-runtime.js"></script>
+    <script defer src="/entrepreneur/api.js"></script>
+    <script defer src="/entrepreneur/store.js"></script>
+    <script defer src="/entrepreneur/views.js"></script>
+    <script defer src="/entrepreneur/app.js"></script>
+  </head>
+  <body class="entrepreneur-app" data-app-state="loading">
+    <a class="skip-link" href="#workspace">Aller au contenu</a>
+    <div class="app-loading" data-app-loading role="status" aria-live="polite">
+      <span class="rb-spinner" aria-hidden="true"></span>
+      <span>Ouverture de votre espace entrepreneur…</span>
+    </div>
+    <aside class="app-sidebar" data-sidebar aria-label="Navigation entrepreneur">
+      <div class="sidebar-head">
+        <a class="app-wordmark" href="/entrepreneur/" aria-label="RegBridge, tableau de bord">
+          <span class="app-mark" aria-hidden="true">RB</span><strong>RegBridge</strong>
+        </a>
+        <button class="icon-button sidebar-close" type="button" data-close-sidebar aria-label="Fermer le menu">×</button>
+      </div>
+      <div class="project-switcher" data-project-switcher></div>
+      <nav class="sidebar-nav" data-sidebar-nav aria-label="Sections du projet"></nav>
+      <div class="sidebar-foot">
+        <a class="project-progress" href="#" data-nav-view="roadmap" data-progress-card></a>
+        <button class="logout-button" type="button" data-logout>Se déconnecter</button>
+      </div>
+    </aside>
+    <div class="sidebar-scrim" data-sidebar-scrim></div>
+    <div class="app-frame">
+      <header class="app-topbar">
+        <button class="icon-button menu-button" type="button" data-open-sidebar aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
+        <div class="breadcrumbs" data-breadcrumbs aria-label="Fil d’Ariane"></div>
+        <div class="topbar-account">
+          <a href="/workspace/" class="workspace-link">Entrepreneur</a>
+          <span class="account-initials" data-user-initials aria-hidden="true">—</span>
+          <span class="sr-only" data-user-email></span>
+        </div>
+      </header>
+      <main id="workspace" class="app-workspace" tabindex="-1">
+        <div class="workspace-inner" data-workspace aria-live="polite"></div>
+      </main>
+      <footer class="copilot-bar">
+        <p data-copilot-copy>Créez ou sélectionnez un projet pour activer le contexte du copilote.</p>
+        <button type="button" data-open-copilot aria-describedby="copilot-availability"><span aria-hidden="true">✦</span> Copilote</button>
+        <span class="sr-only" id="copilot-availability" data-copilot-availability>Un projet actif est nécessaire.</span>
+      </footer>
+    </div>
+    <div class="drawer-scrim" data-drawer-scrim></div>
+    <aside class="copilot-drawer" data-copilot-drawer role="dialog" aria-modal="true" aria-labelledby="copilot-title" aria-hidden="true">
+      <header>
+        <div><p class="eyebrow">CONTEXTE PROJET</p><h2 id="copilot-title">Copilote RegBridge</h2></div>
+        <button class="icon-button" type="button" data-close-copilot aria-label="Fermer le copilote">×</button>
+      </header>
+      <div class="copilot-content">
+        <section class="copilot-context" aria-label="Contexte actif">
+          <p class="eyebrow">CONTEXTE ACTIF</p>
+          <strong class="copilot-project" data-copilot-project>Aucun projet actif</strong>
+          <small data-copilot-project-type></small>
+          <p>Le Copilote utilise uniquement les informations auxquelles vous avez accès.</p>
+        </section>
+        <div class="copilot-notice" data-copilot-notice role="status" hidden></div>
+        <div class="copilot-quick-actions" data-copilot-quick-actions aria-label="Questions suggérées"></div>
+        <div class="copilot-messages" data-copilot-messages aria-live="polite"></div>
+        <div class="copilot-error" data-copilot-error role="alert" hidden></div>
+        <div class="copilot-generating" data-copilot-generating role="status" hidden><span class="rb-spinner" aria-hidden="true"></span><span>RegBridge analyse le contexte autorisé…</span><button type="button" data-cancel-copilot>Arrêter</button></div>
+        <form class="copilot-form" data-copilot-form>
+          <label class="sr-only" for="copilot-question">Posez une question sur votre projet</label>
+          <textarea id="copilot-question" name="content" rows="3" maxlength="4000" placeholder="Posez une question sur votre projet…" required></textarea>
+          <button type="submit" data-submit-copilot>Envoyer</button>
+        </form>
+        <p class="copilot-safety">Les réponses RegBridge sont des aides à la décision. Vérifiez les éléments importants à partir des sources fournies.</p>
+      </div>
+    </aside>
+  </body>
+</html>

@@ -55,6 +55,18 @@ class ConversationResponse(BaseModel):
     messages: list[MessageResponse] = []
 
 
+class CopilotTurnResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: uuid.UUID
+    user_message: MessageResponse
+    assistant_message: MessageResponse
+    orchestration_status: Literal["succeeded", "partial", "failed"]
+    sources: list[str] = Field(default_factory=list, max_length=50)
+    references: list[str] = Field(default_factory=list, max_length=10)
+    warnings: list[str] = Field(default_factory=list, max_length=10)
+
+
 class TraceResourceRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

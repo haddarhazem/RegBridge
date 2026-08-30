@@ -71,6 +71,12 @@ async def create_project(data: ProjectCreate, principal: Principal, session: Ses
     project = await ProjectService(session).create(principal, data)
     return project_response(project, True)
 
+
+@router.get("", response_model=list[ProjectResponse])
+async def list_projects(principal: Principal, session: Session) -> list[ProjectResponse]:
+    projects = await ProjectService(session).list_for_user(principal)
+    return [project_response(project, membership) for project, membership in projects]
+
 @router.post("/{project_id}/research-needs", response_model=ResearchNeedResponse, status_code=status.HTTP_201_CREATED)
 async def create_research_need(project_id: uuid.UUID, data: ResearchNeedPayload, principal: Principal, session: Session):
     return need_response(*await ResearchMatchingService(session).create_need(principal, project_id, data))

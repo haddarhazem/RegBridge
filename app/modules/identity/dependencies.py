@@ -1,9 +1,8 @@
 import logging
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
@@ -12,8 +11,8 @@ from app.modules.identity.auth import (
     InvalidAccessTokenError,
     get_token_validator,
 )
-from app.modules.identity.models import Role, User, UserIdentity, UserRole
 from app.modules.identity.schemas import AuthenticatedPrincipal
+from app.modules.identity.service import IdentityProvisioningService
 
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -24,6 +23,7 @@ def authentication_error() -> HTTPException:
 
 
 async def get_authenticated_principal(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AuthenticatedPrincipal:
@@ -41,29 +41,19 @@ async def get_authenticated_principal(
 
     provider = validator.settings.oidc_issuer
     assert provider is not None
-    result = await session.execute(
-        select(UserIdentity, User).join(User, User.id == UserIdentity.user_id).where(
-            UserIdentity.provider == provider,
-            UserIdentity.provider_subject == claims["sub"],
-        )
+    request_id = getattr(request.state, "request_id", None)
+    return await IdentityProvisioningService(session).resolve_or_provision(
+        provider=provider,
+        claims=claims,
+        request_id=request_id,
     )
-    identity = result.one_or_none()
-    if identity is None:
-        raise HTTPException(status_code=403, detail="Identity is not provisioned")
-    user_identity, user = identity
-    if user.status != "active":
-        raise HTTPException(status_code=403, detail="User account is unavailable")
-
-    role_result = await session.execute(
-        select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id).order_by(Role.code)
-    )
-    return AuthenticatedPrincipal(user_id=user.id, email=user.email, roles=tuple(role_result.scalars().all()), provider=user_identity.provider)
 
 
 async def get_optional_authenticated_principal(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AuthenticatedPrincipal | None:
     if credentials is None:
         return None
-    return await get_authenticated_principal(credentials, session)
+    return await get_authenticated_principal(request, credentials, session)

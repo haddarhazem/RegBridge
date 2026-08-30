@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.context import ProjectContextProjection, ProjectFactProjection
+from app.modules.ai.projections import AssessmentConclusionProjection, AssessmentProjection, RoadmapItemProjection, RoadmapProjection
 from app.modules.projects.models import Project, ProjectFact, ProjectMember
 
 
@@ -59,3 +60,80 @@ class ProjectContextRepository:
             location=values.location,
             facts=tuple(ProjectFactProjection(domain=row.domain, value=row.value, origin=row.origin, status=row.status, provenance=row.provenance, uncertainty=row.uncertainty) for row in facts),
         )
+
+    async def load_latest_assessment_projection(self, project_id: uuid.UUID) -> AssessmentProjection | None:
+        from app.modules.regulatory.assessment_models import RegulatoryAssessment
+
+        assessment = await self.session.scalar(
+            select(RegulatoryAssessment)
+            .where(
+                RegulatoryAssessment.project_id == project_id,
+                RegulatoryAssessment.status == "completed",
+                or_(RegulatoryAssessment.verification_verdict.is_(None), RegulatoryAssessment.verification_verdict != "block"),
+            )
+            .order_by(RegulatoryAssessment.version.desc())
+            .limit(1)
+        )
+        if assessment is None:
+            return None
+        result = assessment.result or {}
+        try:
+            return AssessmentProjection(
+                id=assessment.id,
+                version=assessment.version,
+                snapshot_id=assessment.snapshot_id,
+                status=assessment.status,
+                obligations=[AssessmentConclusionProjection.model_validate(item) for item in result.get("obligations", [])[:20]],
+                recommendations=[AssessmentConclusionProjection.model_validate(item) for item in result.get("recommendations", [])[:20]],
+                uncertainties=[AssessmentConclusionProjection.model_validate(item) for item in result.get("uncertainties", [])[:20]],
+                sources=[str(item) for item in result.get("sources", [])[:10]],
+            )
+        except Exception:
+            return None
+
+    async def load_latest_roadmap_projection(self, project_id: uuid.UUID) -> RoadmapProjection | None:
+        from app.modules.regulatory.assessment_models import RegulatoryAssessment
+        from app.modules.regulatory.roadmap_models import LaunchRoadmap, LaunchRoadmapItem
+
+        roadmap = await self.session.scalar(
+            select(LaunchRoadmap)
+            .where(LaunchRoadmap.project_id == project_id, LaunchRoadmap.status == "active")
+            .order_by(LaunchRoadmap.version.desc())
+            .limit(1)
+        )
+        if roadmap is None:
+            return None
+        assessment_version = await self.session.scalar(
+            select(RegulatoryAssessment.version).where(
+                RegulatoryAssessment.id == roadmap.regulatory_assessment_id,
+                RegulatoryAssessment.project_id == project_id,
+            )
+        )
+        if assessment_version is None:
+            return None
+        rows = await self.session.scalars(
+            select(LaunchRoadmapItem)
+            .where(LaunchRoadmapItem.roadmap_id == roadmap.id)
+            .order_by(LaunchRoadmapItem.priority_order, LaunchRoadmapItem.id)
+            .limit(20)
+        )
+        try:
+            items = [RoadmapItemProjection.model_validate({
+                "id": item.id,
+                "item_type": item.item_type,
+                "title": item.title,
+                "priority_order": item.priority_order,
+                "status": item.status,
+                "justification": item.justification,
+                "source_conclusion_refs": item.source_conclusion_refs or [],
+            }) for item in rows]
+            return RoadmapProjection(
+                id=roadmap.id,
+                version=roadmap.version,
+                status=roadmap.status,
+                regulatory_assessment_id=roadmap.regulatory_assessment_id,
+                assessment_version=assessment_version,
+                items=items,
+            )
+        except Exception:
+            return None

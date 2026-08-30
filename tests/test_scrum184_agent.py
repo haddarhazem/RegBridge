@@ -72,6 +72,27 @@ async def test_agent_does_not_call_provider_without_evidence():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("question", "reason"),
+    [
+        ("Explique mon évaluation réglementaire.", "assessment_unavailable"),
+        ("Quelles sont les prochaines étapes ?", "roadmap_unavailable"),
+    ],
+)
+async def test_agent_returns_bounded_state_when_requested_projection_is_missing(question, reason):
+    provider = FakeProvider()
+    retriever = FakeRetriever(evidence())
+    agent = RegulatoryAgent(retriever=retriever, provider=provider)
+
+    result = await agent.run(request(question))
+
+    assert result.status == "succeeded"
+    assert result.structured_payload == {"context_only": True, "context_reason": reason}
+    assert provider.requests == []
+    assert not hasattr(retriever, "question")
+
+
+@pytest.mark.asyncio
 async def test_agent_passes_only_bounded_authorized_context():
     provider = FakeProvider()
     agent = RegulatoryAgent(retriever=FakeRetriever(evidence()), provider=provider)

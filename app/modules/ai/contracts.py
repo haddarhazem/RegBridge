@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.identity.schemas import AuthenticatedPrincipal
+from app.modules.ai.projections import AssessmentProjection, RoadmapProjection
 
 
 class OrchestrationRequest(BaseModel):
@@ -54,6 +55,8 @@ class AuthorizedContext(BaseModel):
     target_market: str | None = Field(default=None, max_length=120)
     location: str | None = Field(default=None, max_length=160)
     facts: list[dict[str, object]] = Field(default_factory=list, max_length=50)
+    assessment: AssessmentProjection | None = None
+    roadmap: RoadmapProjection | None = None
 
 
 class AgentRequest(BaseModel):

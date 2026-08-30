@@ -1,5 +1,7 @@
-import pytest
+import uuid
+
 import httpx
+import pytest
 
 from app.main import app
 from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace
@@ -12,6 +14,19 @@ async def test_conversation_persistence_requires_authentication() -> None:
         response = await client.post("/conversations", json={"title": "anonymous"})
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_project_catalog_and_copilot_response_require_authentication() -> None:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        projects = await client.get("/projects")
+        copilot = await client.post(
+            f"/conversations/{uuid.uuid4()}/responses",
+            json={"content": "question"},
+        )
+
+    assert projects.status_code == 401
+    assert copilot.status_code == 401
 
 
 def test_error_redaction_removes_credentials_and_limits_length() -> None:

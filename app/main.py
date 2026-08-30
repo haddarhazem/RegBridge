@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -53,6 +54,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(matching_router)
     application.include_router(brief_router)
     application.include_router(research_router)
+    frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
+    if frontend_dir.is_dir():
+        from fastapi.staticfiles import StaticFiles
+
+        application.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
     logger.info("Starting %s in %s environment", active_settings.app_name, active_settings.environment)
     return application
 

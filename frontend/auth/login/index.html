@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion &mdash; RegBridge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/auth/auth.css">
+    <script defer src="/vendor/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script defer src="/auth/auth-runtime.js"></script>
+    <script defer src="/auth/auth.js"></script>
+  </head>
+  <body class="auth-page" data-auth-page="login">
+    <div class="global-background" aria-hidden="true"><span class="scan-line"></span><svg viewBox="0 0 1440 900" preserveAspectRatio="none"><path class="path path-a" d="M0 230H340L580 470H980L1210 250H1440"/><path class="path path-b" d="M0 680H260L490 430H820L1080 700H1440"/></svg></div>
+    <a class="skip-link" href="#auth-content">Aller au contenu</a>
+    <header class="auth-header"><a class="wordmark" href="/" aria-label="RegBridge, accueil"><span class="mark" aria-hidden="true">RB</span><span>RegBridge</span></a><nav aria-label="Navigation authentification"><a href="/">Retour &agrave; l'accueil</a><span>Pas encore de compte&nbsp;?</span><a href="/auth/register/">Cr&eacute;er un compte</a></nav></header>
+    <main id="auth-content" class="auth-layout">
+      <section class="auth-visual" data-auth-visual data-mode="login" aria-labelledby="visual-login-title">
+        <div class="auth-visual-copy"><p class="auth-eyebrow">UN COMPTE. TROIS TRAJECTOIRES.</p><h2 id="visual-login-title" data-visual-title>Tout votre &eacute;cosyst&egrave;me.<br>Un seul acc&egrave;s.</h2><p data-visual-copy>Startups, investissement et recherche reli&eacute;s par des workflows contr&ocirc;l&eacute;s.</p></div>
+        <div class="auth-network" aria-hidden="true">
+          <svg class="auth-network-lines" viewBox="0 0 720 390" preserveAspectRatio="none">
+            <path d="M360 205L360 54"/><path d="M360 205L112 218"/><path d="M360 205L608 218"/><path d="M360 205L360 345"/>
+            <circle class="auth-network-signal signal-startup" r="4"><animateMotion dur="8s" repeatCount="indefinite" path="M360 205L360 54"/></circle>
+            <circle class="auth-network-signal signal-investor" r="4"><animateMotion dur="9s" begin="-3s" repeatCount="indefinite" path="M360 205L112 218"/></circle>
+            <circle class="auth-network-signal signal-researcher" r="4"><animateMotion dur="10s" begin="-6s" repeatCount="indefinite" path="M360 205L608 218"/></circle>
+          </svg>
+          <div class="auth-core"><strong>RB</strong><small>REGBRIDGE</small></div>
+          <div class="auth-pathway pathway-startup" data-pathway="entrepreneur"><strong>STARTUP</strong><small>PROJET</small></div>
+          <div class="auth-pathway pathway-investor" data-pathway="investor"><strong>INVESTISSEUR</strong><small>CAPITAL</small></div>
+          <div class="auth-pathway pathway-researcher" data-pathway="researcher"><strong>CHERCHEUR</strong><small>RECHERCHE</small></div>
+          <div class="auth-network-foundation">PREUVES / ACC&Egrave;S</div>
+        </div>
+      </section>
+      <section class="auth-panel" aria-labelledby="login-title"><div class="auth-panel-signal" aria-hidden="true"><span data-signal-label>CONNECTING</span></div><div class="auth-panel-inner auth-mode-transition"><p class="auth-eyebrow">CONNEXION</p><h1 id="login-title" class="auth-title">Retrouvez<br>votre espace.</h1><p class="auth-description">Reprenez vos projets, opportunit&eacute;s et recherches.</p><form class="auth-actions" data-provider-form><button class="auth-submit" type="submit" data-provider-action="signin">Se connecter avec votre organisation</button></form><div class="auth-state" data-auth-state data-state="info" role="status" aria-live="polite">Aucune session active</div><p class="auth-note">Authentification s&eacute;curis&eacute;e par votre fournisseur d'identit&eacute;.</p><div class="auth-trust" aria-label="Principes de confiance"><span><b>01</b>Un compte, plusieurs r&ocirc;les</span><span><b>02</b>Acc&egrave;s contr&ocirc;l&eacute;</span><span><b>03</b>Priv&eacute; par d&eacute;faut</span></div><p class="auth-mobile-switch">Pas encore de compte&nbsp;? <a class="auth-link" href="/auth/register/">Cr&eacute;er un compte</a></p></div></section>
+    </main>
+  </body>
+</html>

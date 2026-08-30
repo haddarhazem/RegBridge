@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Choisir votre espace &mdash; RegBridge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/auth/auth.css">
+    <script defer src="/vendor/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script defer src="/auth/auth-runtime.js"></script>
+    <script defer src="/auth/auth.js"></script>
+  </head>
+  <body class="auth-page" data-auth-page="workspace">
+    <div class="global-background" aria-hidden="true"><span class="scan-line"></span><svg viewBox="0 0 1440 900" preserveAspectRatio="none"><path class="path path-a" d="M0 230H340L580 470H980L1210 250H1440"/></svg></div>
+    <a class="skip-link" href="#auth-content">Aller au contenu</a>
+    <header class="auth-header"><a class="wordmark" href="/" aria-label="RegBridge, accueil"><span class="mark" aria-hidden="true">RB</span><span>RegBridge</span></a><nav aria-label="Navigation authentification"><a href="/onboarding/roles/">Gérer mes rôles</a><button type="button" data-auth-signout>Se déconnecter</button></nav></header>
+    <main id="auth-content" class="auth-layout">
+      <section class="auth-visual" aria-labelledby="workspace-visual-title"><div class="auth-visual-copy"><p class="auth-eyebrow">UN COMPTE. PLUSIEURS CONTEXTES.</p><h2 id="workspace-visual-title">Votre travail.<br>Le bon espace.</h2><p>Changer de contexte ne modifie ni vos droits ni vos rôles persistés.</p></div><div class="auth-network" aria-hidden="true"><div class="auth-core"><strong>RB</strong><small>REGBRIDGE</small></div></div></section>
+      <section class="auth-panel" aria-labelledby="workspace-title"><div class="auth-panel-inner auth-mode-transition"><p class="auth-eyebrow">ESPACE ACTIF</p><h1 id="workspace-title" class="auth-title">Choisissez votre espace.</h1><p class="auth-description">Le changement d’espace adapte votre interface sans modifier les autorisations de votre compte.</p><p class="auth-note">Compte&nbsp;: <strong data-auth-user>&mdash;</strong></p><div class="auth-state" data-auth-state data-state="loading" role="status" aria-live="polite">Vérification de votre session…</div><div class="role-list" data-role-options aria-label="Espaces disponibles"></div><div class="auth-trust" aria-label="Principes de confiance"><span><b>01</b>Contexte local</span><span><b>02</b>Accès contrôlés</span><span><b>03</b>Aucune réauthentification</span></div></div></section>
+    </main>
+  </body>
+</html>

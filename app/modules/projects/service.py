@@ -179,6 +179,19 @@ class ProjectService:
             raise HTTPException(status_code=404, detail="Project not found")
         return project, membership
 
+    async def list_for_user(self, actor: AuthenticatedPrincipal) -> list[tuple[Project, ProjectMember]]:
+        """Return projects backed by a current, active membership only."""
+        rows = await self.session.execute(
+            select(Project, ProjectMember)
+            .join(ProjectMember, ProjectMember.project_id == Project.id)
+            .where(
+                ProjectMember.user_id == actor.user_id,
+                ProjectMember.status == "active",
+            )
+            .order_by(Project.updated_at.desc(), Project.id.asc())
+        )
+        return [(project, membership) for project, membership in rows.all()]
+
     async def transition_project(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, target_type: str) -> Project:
         allowed = {"idea": "startup_in_creation", "startup_in_creation": "existing_startup"}
         if target_type not in {"idea", "startup_in_creation", "existing_startup"}:
