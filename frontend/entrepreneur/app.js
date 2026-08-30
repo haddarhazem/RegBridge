@@ -15,14 +15,14 @@
   const state = {
     user: null, projects: [], project: null, view: 'dashboard', tab: 'overview',
     onboarding: null, facts: [], assessment: null, assessments: [], roadmap: null,
-    documents: [], members: [], controls: [], score: null,
+    documents: [], documentFilter: 'all', members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [], documentPollTimer: null, documentPollAttempts: 0,
     editingFactId: null,
-    copilot: { projectId: null, conversationId: null, messages: [], loading: false, error: '', notice: '', controller: null },
+    copilot: { projectId: null, conversationId: null, messages: [], loading: false, error: '', notice: '', controller: null, context: { documentId: null, versionId: null, analysisId: null } },
   };
 
   function route() {
     const params = new URLSearchParams(window.location.search);
-    return { view: params.get('view') || 'dashboard', projectId: params.get('project'), tab: params.get('tab') || 'overview', version: params.get('version') };
+    return { view: params.get('view') || 'dashboard', projectId: params.get('project'), tab: params.get('tab') || 'overview', version: params.get('version'), document: params.get('document'), analysis: params.get('analysis') };
   }
 
   function routeUrl(view, projectId = state.project?.id, extra = {}) {
@@ -76,6 +76,7 @@
       error: '',
       notice: announce && projectId ? 'Projet actif modifié. Une nouvelle conversation a été ouverte.' : '',
       controller: null,
+      context: { documentId: null, versionId: null, analysisId: null },
     };
     renderCopilot();
   }
@@ -165,7 +166,11 @@
     let timedOut = false;
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 60000);
     try {
-      await api.askCopilot(state.copilot.conversationId, content, controller.signal);
+      await api.askCopilot(state.copilot.conversationId, content, controller.signal, {
+        document_id: state.copilot.context.documentId,
+        document_version_id: state.copilot.context.versionId,
+        analysis_id: state.copilot.context.analysisId,
+      });
       const conversation = await api.conversation(state.copilot.conversationId);
       state.copilot.messages = conversation.messages || [];
     } catch (error) {
@@ -209,19 +214,12 @@
   }
 
   async function loadDocuments(projectId) {
-    const ids = store.documentIds(projectId);
-    const rows = await Promise.all(ids.map(async (id) => {
-      try {
-        const document = await api.getDocument(id);
-        if (document.project_id !== projectId || document.deleted_at) { store.forgetDocument(projectId, id); return null; }
-        const [analyses] = await Promise.all([safe(() => api.documentAnalyses(id), [])]);
-        return { document, versions: store.versionRecords(id), analyses };
-      } catch (error) {
-        if ([403, 404].includes(error.status)) store.forgetDocument(projectId, id);
-        return null;
-      }
-    }));
-    return rows.filter(Boolean);
+    const documents = await api.projectDocuments(projectId);
+    return Promise.all(documents.map(async (document) => ({
+      document,
+      versions: await safe(() => api.documentVersions(document.id), []),
+      analyses: await safe(() => api.documentAnalyses(document.id), []),
+    })));
   }
 
   function renderProjectSwitcher() {
@@ -275,14 +273,14 @@
 
   async function loadProjectContext() {
     if (!state.project) {
-      Object.assign(state, { onboarding: null, facts: [], assessment: null, assessments: [], roadmap: null, documents: [], members: [], controls: [], score: null });
+      Object.assign(state, { onboarding: null, facts: [], assessment: null, assessments: [], roadmap: null, documents: [], members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [] });
       return;
     }
     const id = state.project.id;
-    const [onboarding, facts, assessment, roadmap] = await Promise.all([
-      safe(() => api.getOnboarding(id)), safe(() => api.facts(id), []), safe(() => api.latestAssessment(id)), safe(() => api.latestRoadmap(id)),
+    const [onboarding, facts, assessment, roadmap, documents] = await Promise.all([
+      safe(() => api.getOnboarding(id)), safe(() => api.facts(id), []), safe(() => api.latestAssessment(id)), safe(() => api.latestRoadmap(id)), safe(() => loadDocuments(id), []),
     ]);
-    Object.assign(state, { onboarding, facts, assessment, roadmap });
+    Object.assign(state, { onboarding, facts, assessment, roadmap, documents });
   }
 
   function requireProject() {
@@ -309,18 +307,26 @@
     } else if (state.view === 'roadmap') workspace.innerHTML = views.roadmap(state);
     else if (state.view === 'documents') {
       state.documents = await loadDocuments(state.project.id);
-      workspace.innerHTML = views.documents(state);
+      workspace.innerHTML = views.documents({ ...state, selectedDocumentId: routeState.document, selectedVersionId: routeState.version });
     } else if (state.view === 'contracts') {
       state.documents = await loadDocuments(state.project.id);
-      workspace.innerHTML = views.contracts(state);
+      workspace.innerHTML = views.contracts({ ...state, selectedDocumentId: routeState.document, selectedVersionId: routeState.version, selectedAnalysisId: routeState.analysis });
     } else if (state.view === 'access') {
       state.members = await safe(() => api.members(state.project.id), []);
       workspace.innerHTML = views.access(state);
     } else if (state.view === 'compliance') {
       let complianceError = null;
+      state.frameworks = [];
+      state.scoreHistory = [];
+      if (state.project.project_type !== 'idea') {
+        state.frameworks = await safe(() => api.frameworks(), []);
+        if (state.activeFrameworkVersionId && !state.frameworks.some((framework) => (framework.versions || []).some((version) => version.id === state.activeFrameworkVersionId && version.status === 'active'))) state.activeFrameworkVersionId = null;
+      }
       if (state.project.project_type !== 'idea') {
         try { state.controls = await api.controls(state.project.id); } catch (error) { complianceError = errorMessage(error); }
-        state.score = await safe(() => api.latestScore(state.project.id));
+        state.score = await safe(() => api.latestScore(state.project.id, state.activeFrameworkVersionId));
+        state.scoreHistory = await safe(() => api.scoreHistory(state.project.id, state.activeFrameworkVersionId), []);
+        state.selectedControlEvidence = state.selectedControlId ? await safe(() => api.controlEvidence(state.project.id, state.selectedControlId), []) : [];
       }
       workspace.innerHTML = views.compliance({ ...state, error: complianceError });
     } else {
@@ -331,14 +337,20 @@
   }
 
   async function loadRoute() {
+    if (state.documentPollTimer) { window.clearTimeout(state.documentPollTimer); state.documentPollTimer = null; }
+    state.documentPollAttempts = 0;
     workspace.setAttribute('aria-busy', 'true');
     workspace.innerHTML = '<div class="workspace-skeleton" aria-label="Chargement"><span></span><span></span><span></span></div>';
     const current = route();
     try {
       await hydrateProjects(current.projectId);
       await loadProjectContext();
+      state.copilot.context = current.document && current.version
+        ? { documentId: current.document, versionId: current.version, analysisId: current.analysis || null }
+        : { documentId: null, versionId: null, analysisId: null };
       await renderView(current);
       renderShell();
+      if (['documents', 'contracts'].includes(current.view)) scheduleDocumentPolling();
       workspace.focus({ preventScroll: true });
     } catch (error) {
       workspace.innerHTML = views.inlineError(errorMessage(error));
@@ -367,6 +379,16 @@
     if (name === 'open-roadmap') return navigate('roadmap');
     if (name === 'open-documents') return navigate('documents');
     if (name === 'open-contracts') return navigate('contracts');
+    if (name === 'adopt-framework') return perform(target, 'Activation...', () => api.adoptFramework(state.project.id, target.dataset.frameworkVersionId), loadRoute);
+    if (name === 'calculate-score') return perform(target, 'Calcul...', () => api.calculateScore(state.project.id, target.dataset.frameworkVersionId || state.activeFrameworkVersionId || null), loadRoute);
+    if (name === 'view-control-evidence') {
+      state.selectedControlId = target.dataset.controlId;
+      state.selectedControlEvidence = await safe(() => api.controlEvidence(state.project.id, state.selectedControlId), []);
+      return renderView(route());
+    }
+    if (name === 'save-control') return saveComplianceControl(target);
+    if (name === 'attach-evidence') return attachComplianceEvidence(target);
+    if (name === 'revoke-evidence') return perform(target, 'Revocation...', () => api.revokeEvidence(state.project.id, target.dataset.evidenceId), loadRoute);
     if (name === 'project-tab') return navigate('project', { tab: target.dataset.tab });
     if (name === 'select-assessment') return navigate('regulatory', { version: target.dataset.version });
     if (name === 'filter-roadmap') {
@@ -375,6 +397,12 @@
       return;
     }
     if (name === 'show-upload') { document.querySelector('[data-form="upload-document"]').hidden = false; return; }
+    if (name === 'filter-documents') {
+      state.documentFilter = target.dataset.filter || 'all';
+      document.querySelectorAll('[data-document-filter]').forEach((item) => item.classList.toggle('active', item === target));
+      document.querySelectorAll('[data-document-classification]').forEach((item) => { item.hidden = state.documentFilter !== 'all' && item.dataset.documentClassification !== state.documentFilter; });
+      return;
+    }
     if (name === 'submit-create') return submitCreate(target);
     if (name === 'submit-onboarding') return submitOnboarding(target);
     if (name === 'infer-facts') return perform(target, 'Déduction…', () => api.inferFacts(state.project.id), () => navigate('facts'));
@@ -401,6 +429,18 @@
     if (name === 'complete-roadmap-item') return perform(target, 'Mise à jour…', () => api.updateRoadmapItem(state.project.id, state.roadmap.version, target.dataset.itemId, 'completed'), loadRoute);
     if (name === 'submit-upload') return submitUpload(target);
     if (name === 'show-version-upload') return uploadVersion(target.dataset.documentId);
+    if (name === 'open-document') return navigate('documents', { document: target.dataset.documentId, version: target.dataset.versionId });
+    if (name === 'open-version') return navigate('documents', { document: target.dataset.documentId, version: target.dataset.versionId });
+    if (name === 'download-version') return downloadVersion(target.dataset.documentId, target.dataset.versionId);
+    if (name === 'retry-extraction') return retryExtraction(target);
+    if (name === 'copilot-document') {
+      state.copilot.context = { documentId: target.dataset.documentId, versionId: target.dataset.versionId, analysisId: null };
+      return openCopilot();
+    }
+    if (name === 'copilot-analysis') {
+      state.copilot.context = { documentId: target.dataset.documentId, versionId: target.dataset.versionId, analysisId: target.dataset.analysisId };
+      return openCopilot();
+    }
     if (name === 'document-contracts') return navigate('contracts', { document: target.dataset.documentId });
     if (name === 'analyze-contract') return analyzeContract(target);
   }
@@ -465,14 +505,30 @@
     } catch (error) { setBusy(button, false); formError(form, errorMessage(error)); }
   }
 
+  async function saveComplianceControl(button) {
+    const card = button.closest('[data-control-id]');
+    if (!card) return;
+    const status = card.querySelector('[data-control-status]')?.value;
+    const applicability = card.querySelector('[data-control-applicability]')?.value;
+    await perform(button, 'Enregistrement...', () => api.updateControl(state.project.id, button.dataset.controlId, { status, applicability }), loadRoute);
+  }
+
+  async function attachComplianceEvidence(button) {
+    const form = button.closest('[data-evidence-form]');
+    const versionId = new FormData(form).get('document_version_id');
+    if (!versionId || !state.selectedControlId) return;
+    await perform(button, 'Association...', () => api.attachEvidence(state.project.id, { control_id: state.selectedControlId, document_version_id: versionId }), loadRoute);
+  }
+
   async function submitUpload(button) {
     const form = button.closest('form');
     if (!form.reportValidity()) return;
     const data = new FormData(form); const file = data.get('upload');
     formError(form, ''); setBusy(button, true, 'Import…');
     try {
-      const result = await api.uploadDocument(state.project.id, file, { title: data.get('title'), classification: data.get('classification'), visibility: data.get('visibility') });
-      store.rememberDocument(state.project.id, result.document.id); store.rememberVersion(result.document.id, result.version);
+      if (!(file instanceof File) || !file.size) throw new Error('Sélectionnez un fichier non vide.');
+      if (!['.pdf', '.docx', '.txt'].includes(file.name.slice(file.name.lastIndexOf('.')).toLowerCase())) throw new Error('Formats acceptés : PDF, DOCX ou TXT.');
+      await api.uploadDocument(state.project.id, file, { title: data.get('title'), classification: data.get('classification'), visibility: data.get('visibility') });
       await loadRoute();
     } catch (error) { setBusy(button, false); formError(form, errorMessage(error)); }
   }
@@ -481,10 +537,23 @@
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.pdf,.docx,.txt';
     input.addEventListener('change', async () => {
       if (!input.files[0]) return;
-      try { const result = await api.uploadDocumentVersion(documentId, input.files[0]); store.rememberVersion(documentId, result.version); await loadRoute(); }
+      try { await api.uploadDocumentVersion(documentId, input.files[0]); await loadRoute(); }
       catch (error) { window.alert(errorMessage(error)); }
     });
     input.click();
+  }
+
+  async function downloadVersion(documentId, versionId) {
+    try {
+      const result = await api.downloadDocumentVersion(documentId, versionId);
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = result.filename; document.body.append(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { showToast(errorMessage(error)); }
+  }
+
+  async function retryExtraction(button) {
+    await perform(button, 'Nouvelle tentativeâ€¦', () => api.retryDocumentExtraction(button.dataset.documentId, button.dataset.versionId), loadRoute);
   }
 
   async function analyzeContract(button) {
@@ -492,6 +561,24 @@
     if (!select?.value) { select?.focus(); return; }
     const [documentId, versionId] = select.value.split('|');
     await perform(button, 'Analyse…', () => api.analyzeContract(documentId, versionId), loadRoute);
+  }
+
+  function scheduleDocumentPolling() {
+    const pending = state.documents.some(({ versions }) => versions.some((version) => ['pending', 'processing'].includes(version.extraction_status)));
+    if (!pending || state.documentPollAttempts >= 6) return;
+    const delays = [2000, 3000, 5000, 5000, 5000, 5000];
+    const delay = delays[state.documentPollAttempts++];
+    state.documentPollTimer = window.setTimeout(async () => {
+      state.documentPollTimer = null;
+      if (!['documents', 'contracts'].includes(route().view)) return;
+      try {
+        state.documents = await loadDocuments(state.project.id);
+        const current = route();
+        if (current.view === 'documents') workspace.innerHTML = views.documents({ ...state, selectedDocumentId: current.document, selectedVersionId: current.version });
+        else workspace.innerHTML = views.contracts({ ...state, selectedDocumentId: current.document, selectedVersionId: current.version, selectedAnalysisId: current.analysis });
+        scheduleDocumentPolling();
+      } catch { /* the regular route error path handles the next navigation */ }
+    }, delay);
   }
 
   function openSidebar() { document.body.classList.add('sidebar-open'); document.querySelector('[data-open-sidebar]').setAttribute('aria-expanded', 'true'); }
@@ -521,6 +608,7 @@
   });
   document.addEventListener('change', async (event) => {
     if (event.target.matches('[data-project-select]')) { store.setActiveProject(event.target.value); navigate('dashboard', { projectId: event.target.value }); }
+    if (event.target.matches('[data-compliance-framework]')) { state.activeFrameworkVersionId = event.target.value || null; state.selectedControlId = null; state.selectedControlEvidence = []; await loadRoute(); }
     if (event.target.matches('[data-roadmap-item]')) await perform(event.target, 'Mise à jour…', () => api.updateRoadmapItem(state.project.id, state.roadmap.version, event.target.dataset.roadmapItem, event.target.value), loadRoute);
   });
   document.querySelector('[data-open-sidebar]').addEventListener('click', openSidebar);

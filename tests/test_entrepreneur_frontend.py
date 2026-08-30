@@ -57,13 +57,16 @@ def test_projects_are_discovered_from_server_and_documents_fail_closed() -> None
     app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
 
     assert "userId" in store
-    assert "project.${projectId}.documents" in store
+    assert "active-project" in store
+    assert "documentIds" not in store
+    assert "rememberDocument" not in store
     assert "api.projects()" in app_script
     assert "projectIds" not in store
     assert "rememberProject" not in store
-    assert "document.project_id !== projectId" in app_script
+    assert "api.projectDocuments(projectId)" in app_script
     assert "Vos droits d’accès sont vérifiés à chaque ouverture" in views
-    assert "Cette vue affiche les documents importés depuis ce navigateur" in views
+    assert "Cette vue affiche les documents importés depuis ce navigateur" not in views
+    assert "data-document-classification" in views
     for fake_metric in ("72% compliant", "8 documents complete", "4 regulations"):
         assert fake_metric not in views
 
@@ -100,7 +103,33 @@ def test_views_cover_real_project_workflow_and_safety_copy() -> None:
     assert "Aucun changement automatique n’est appliqué" in views
     assert "uploadDocumentVersion" in api
     assert "analyzeContract" in api
+    assert "retryDocumentExtraction" in api
+    assert "extraction_status" in api + views
+    assert "retry-extraction" in views
     assert "<dt>Identifiant</dt>" not in views
+
+
+def test_compliance_frontend_uses_versioned_backend_contracts_and_server_score() -> None:
+    adapter = (ENTREPRENEUR / "api.js").read_text(encoding="utf-8")
+    app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
+    views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
+
+    for behavior in (
+        "frameworks", "adoptFramework", "updateControl", "controlEvidence",
+        "attachEvidence", "revokeEvidence", "calculateScore", "scoreHistory",
+    ):
+        assert behavior in adapter
+    assert "/compliance/frameworks" in adapter
+    assert "/projects/${projectId}/compliance/adoptions" in adapter
+    assert "/projects/${projectId}/compliance/evidence/${evidenceId}/revoke" in adapter
+    assert "state.selectedControlEvidence" in app_script
+    assert "project_type !== 'idea'" in app_script
+    assert "malware_scan_status === 'clean'" in views
+    assert "extraction_status === 'ready'" in views
+    assert "source_references" in views
+    assert "scoreExplanation" not in views
+    assert "score * 100" not in views
+    assert "certification officielle" in views
 
 
 def test_profile_uses_real_identity_roles_workspace_and_project_state() -> None:
