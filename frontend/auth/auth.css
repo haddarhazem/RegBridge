@@ -342,6 +342,22 @@ body.auth-page {
 .auth-state[data-state="error"] { color: var(--paper); }
 .auth-state[data-state="error"]::before { border-radius: 0; transform: rotate(45deg); }
 
+.auth-session-actions {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--auth-border-quiet);
+}
+
+.auth-session-actions p {
+  margin: 0;
+  color: var(--ash);
+  font-size: .78rem;
+}
+
+.auth-session-actions[hidden] { display: none; }
+
 .auth-note {
   margin: 22px 0 0;
   color: var(--smoke);

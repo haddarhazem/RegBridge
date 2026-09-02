@@ -178,7 +178,19 @@
   const provider = new MotionProvider();
   new ScrollProgress(provider);
   const story = document.querySelector('[data-story]');
-  if (story) new LandingStory(story, provider);
+  const landingStory = story ? new LandingStory(story, provider) : null;
+
+  const pathwayIndexes = { startup: 0, entrepreneur: 0, investor: 1, researcher: 2 };
+  document.querySelectorAll('[data-pathway-role]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      const roleIndex = pathwayIndexes[link.dataset.pathwayRole];
+      const tab = landingStory?.tabs[roleIndex];
+      if (!tab) return;
+      event.preventDefault();
+      window.history.pushState({}, '', '#pathways');
+      tab.click();
+    });
+  });
 
   const menu = document.querySelector('.menu-toggle');
   const nav = document.querySelector('#site-nav');

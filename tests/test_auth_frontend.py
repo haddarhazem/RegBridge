@@ -90,6 +90,23 @@ def test_auth_pages_preserve_design_accessibility_and_real_role_semantics() -> N
     assert ".role-option:has(input:focus-visible)" in css
 
 
+def test_auth_pages_keep_active_sessions_on_auth_routes_with_explicit_continuation() -> None:
+    pages = [
+        (AUTH / "login" / "index.html").read_text(encoding="utf-8"),
+        (AUTH / "register" / "index.html").read_text(encoding="utf-8"),
+    ]
+    script = (AUTH / "auth.js").read_text(encoding="utf-8")
+    initializer = script[script.index("async function initializeLoginOrRegister"):script.index("async function initializeCallback")]
+
+    for page in pages:
+        assert 'data-auth-session-actions' in page
+        assert 'data-auth-continue' in page
+        assert 'Continuer vers mon espace' in page
+    assert 'window.location.replace(runtime.destinationFor(user));' not in initializer
+    assert 'continueButton?.addEventListener' in initializer
+    assert 'runtime.destinationFor(user, intended)' in script
+
+
 def test_auth_has_safe_redirects_no_branded_provider_and_no_fake_password_routes() -> None:
     runtime = (AUTH / "auth-runtime.js").read_text(encoding="utf-8")
     pages = "\n".join(path.read_text(encoding="utf-8") for path in ROOT.rglob("index.html"))
@@ -101,3 +118,12 @@ def test_auth_has_safe_redirects_no_branded_provider_and_no_fake_password_routes
     assert "LinkedIn" not in pages
     assert "/auth/reset-password" not in pages
     assert "console.log" not in runtime
+
+
+def test_oidc_callback_keeps_role_routing_and_validated_return_to() -> None:
+    runtime = (AUTH / "auth-runtime.js").read_text(encoding="utf-8")
+    ui = (AUTH / "auth.js").read_text(encoding="utf-8")
+
+    assert "safeReturnTo(user.state && user.state.returnTo)" in runtime
+    assert "destinationFor(result.currentUser, result.returnTo)" in ui
+    assert "destinationFor(user, intended)" in ui

@@ -4,6 +4,8 @@
   const runtime = window.RegBridgeAuthRuntime;
   const page = document.body.dataset.authPage;
   const stateNode = document.querySelector('[data-auth-state]');
+  const sessionActions = document.querySelector('[data-auth-session-actions]');
+  const continueButton = document.querySelector('[data-auth-continue]');
   const roleContainer = document.querySelector('[data-role-options]');
   const submitRolesButton = document.querySelector('[data-role-submit]');
   const userNode = document.querySelector('[data-auth-user]');
@@ -96,7 +98,7 @@
           item.setAttribute('aria-pressed', String(selected));
         });
         setState(`Espace actif : ${title.textContent}`, 'success');
-        if (code === 'entrepreneur') window.location.assign(runtime.workspaceDestination(code));
+        if (code === 'entrepreneur' || code === 'investor') window.location.assign(runtime.workspaceDestination(code));
       });
       roleContainer.append(option);
     });
@@ -122,7 +124,12 @@
   async function initializeLoginOrRegister() {
     try {
       const user = await runtime.currentUser();
-      window.location.replace(runtime.destinationFor(user));
+      if (sessionActions) sessionActions.hidden = false;
+      setState('Session active. Vous pouvez poursuivre votre authentification.', 'success');
+      continueButton?.addEventListener('click', () => {
+        const intended = new URLSearchParams(window.location.search).get('returnTo');
+        window.location.replace(runtime.destinationFor(user, intended));
+      }, { once: true });
     } catch (error) {
       if (error.code !== 'unauthenticated') setState(error.message, 'error');
       else setState('Aucune session RegBridge active.', 'info');

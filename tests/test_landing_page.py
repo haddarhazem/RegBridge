@@ -19,7 +19,10 @@ async def test_landing_page_renders_one_master_story_and_six_scenes():
     assert 'data-scene="6"' in html
     assert "Construisez en France." in html
     assert "Avec des preuves." in html
-    assert 'href="/auth/register/"' in html
+    assert html.count('href="/auth/register/"') == 3
+    assert html.count('href="/auth/login/"') == 1
+    assert 'href="/auth/register/?from=landing"' not in html
+    assert 'href="/auth/login/?from=landing"' not in html
     assert 'href="/assistant"' in html
     assert html.count("<h1") == 1
 
@@ -69,3 +72,17 @@ def test_landing_page_has_keyboard_menu_and_reduced_motion_fallback():
     assert "is-open" in js
     assert "grid-template-columns:repeat(4,1fr)" in css
     assert "story-content,.panel-layer,.floating-signal" in css
+
+
+def test_landing_navigation_matrix_uses_stable_fragments_and_informational_roles():
+    html = (Path(__file__).parents[1] / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert html.count('href="#france">Plateforme') == 2
+    assert html.count('href="#pathways" data-pathway-role="startup">Startups') == 2
+    assert html.count('href="#pathways" data-pathway-role="investor">Investisseurs') == 2
+    assert html.count('href="#pathways" data-pathway-role="researcher">Recherche') == 2
+    assert html.count('href="#trust">Confiance') == 2
+    assert 'href="#system">Recherche' not in html
+    assert html.count('href="/assistant"') == 2
+    assert 'href="/docs">Documentation' in html
+    assert 'data-pathway-role' in (Path(__file__).parents[1] / "frontend" / "main.js").read_text(encoding="utf-8")
