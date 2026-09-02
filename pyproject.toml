@@ -32,6 +32,12 @@ test = [
   "pytest>=8.0,<9.0",
   "pytest-asyncio>=0.25,<1.0",
 ]
+browser = [
+  "playwright>=1.50,<2.0",
+]
+live = [
+  "Pillow>=10,<13",
+]
 research = [
   "langgraph==1.2.11",
 ]
@@ -41,6 +47,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = [
+  "browser_e2e: real-browser end-to-end coverage requiring the application stack",
   "critical: release-critical deterministic or integration coverage",
   "e2e: production-boundary end-to-end coverage",
   "external: optional test requiring a configured external service",

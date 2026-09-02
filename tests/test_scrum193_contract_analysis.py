@@ -16,6 +16,7 @@ from app.modules.documents.evidence import EvidenceResolutionError, EvidenceReso
 from app.modules.documents.contract_analysis_models import ContractAnalysis
 from app.modules.documents.contract_analysis_service import ContractAnalysisService
 from app.modules.documents.models import Document, DocumentVersion
+from app.modules.documents.service import DocumentService
 from app.modules.identity.models import User
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.models import Project, ProjectMember
@@ -150,6 +151,48 @@ async def test_cross_user_analysis_and_read_are_denied(contract_factory):
             await session.commit()
             with pytest.raises(HTTPException) as error:
                 await ContractAnalysisService(session).get(other, analysis.id)
+            assert error.value.status_code == 404
+    finally:
+        await cleanup(contract_factory, project_id, document_id, [owner.user_id, other.user_id])
+
+
+@pytest.mark.asyncio
+async def test_document_catalogue_and_exact_version_reads_are_authorized(contract_factory):
+    project_id, document_id, version1_id, owner, other = await create_fixture(contract_factory, text_value="Version one")
+    try:
+        async with contract_factory() as session:
+            document = await session.get(Document, document_id)
+            document.visibility = "project_members"
+            session.add(ProjectMember(project_id=project_id, user_id=other.user_id, member_role="member", status="active"))
+            version2 = DocumentVersion(
+                document_id=document_id,
+                version_number=2,
+                original_filename="contract-v2.txt",
+                storage_key=f"test/{uuid.uuid4()}",
+                mime_type="text/plain",
+                size_bytes=10,
+                sha256="b" * 64,
+                malware_scan_status="clean",
+                extracted_text="Version two",
+                uploaded_by_user_id=owner.user_id,
+            )
+            session.add(version2)
+            await session.flush()
+            document.current_version_id = version2.id
+            await session.commit()
+
+        async with contract_factory() as session:
+            service = DocumentService(session)
+            owner_documents = await service.list_for_project(owner, project_id)
+            other_documents = await service.list_for_project(other, project_id)
+            assert [item.id for item in owner_documents] == [document_id]
+            assert [item.id for item in other_documents] == [document_id]
+            versions = await service.list_versions(owner, document_id)
+            assert [item.version_number for item in versions] == [2, 1]
+            exact = await service.get_version(other, document_id, version1_id)
+            assert exact.extracted_text == "Version one"
+            with pytest.raises(HTTPException) as error:
+                await service.get_version(other, uuid.uuid4(), version1_id)
             assert error.value.status_code == 404
     finally:
         await cleanup(contract_factory, project_id, document_id, [owner.user_id, other.user_id])

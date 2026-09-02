@@ -52,3 +52,39 @@ class RoadmapProjection(BaseModel):
     regulatory_assessment_id: uuid.UUID
     assessment_version: int | None = None
     items: list[RoadmapItemProjection] = Field(default_factory=list, max_length=20)
+
+
+class DocumentProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    title: str = Field(max_length=255)
+    document_type: str = Field(max_length=80)
+    classification: str = Field(max_length=40)
+    visibility: str = Field(max_length=30)
+    version_id: uuid.UUID
+    version_number: int
+    extracted_text: str | None = Field(default=None, max_length=6000)
+
+
+class ContractObservationProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    category: str = Field(max_length=80)
+    source_quote: str = Field(max_length=4000)
+    document_version_id: uuid.UUID
+    start_char: int = Field(ge=0)
+    end_char: int = Field(gt=0)
+
+
+class ContractAnalysisProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    strategy: str = Field(max_length=60)
+    status: str = Field(max_length=20)
+    observations: list[ContractObservationProjection] = Field(default_factory=list, max_length=20)
+    limitations: list[str] = Field(default_factory=list, max_length=5)

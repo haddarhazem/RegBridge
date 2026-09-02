@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Espace investisseur — RegBridge</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/investor/investor.css">
+    <script defer src="/vendor/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script defer src="/auth/auth-runtime.js"></script>
+    <script defer src="/investor/api.js"></script>
+    <script defer src="/investor/app.js"></script>
+  </head>
+  <body class="investor-app" data-app-state="loading">
+    <a class="skip-link" href="#investor-workspace">Aller au contenu</a>
+    <div class="investor-loading" data-investor-loading role="status" aria-live="polite">
+      <span class="investor-spinner" aria-hidden="true"></span>
+      <span>Ouverture de votre espace investisseur…</span>
+    </div>
+
+    <aside class="investor-sidebar" data-sidebar aria-label="Navigation investisseur">
+      <div class="investor-sidebar-head">
+        <a class="investor-wordmark" href="/investor/" aria-label="RegBridge, tableau de bord">
+          <span class="investor-mark" aria-hidden="true">RB</span><strong>RegBridge</strong>
+        </a>
+        <button class="investor-icon-button investor-sidebar-close" type="button" data-close-sidebar aria-label="Fermer le menu">×</button>
+      </div>
+      <div class="investor-context-card">
+        <span>ESPACE ACTIF</span>
+        <strong>Investisseur</strong>
+        <small data-investor-user>—</small>
+      </div>
+      <nav class="investor-nav" aria-label="Sections de l’espace">
+        <div class="investor-nav-group"><h2>Essentiel</h2>
+        <a href="/investor/?view=dashboard" data-nav-view="dashboard" class="active"><span aria-hidden="true">01</span>Tableau de bord</a>
+        <a href="/investor/?view=thesis" data-nav-view="thesis"><span aria-hidden="true">02</span>Ma thèse</a>
+        <a href="/investor/?view=discovery" data-nav-view="discovery"><span aria-hidden="true">03</span>Découvrir des startups</a>
+        </div>
+        <div class="investor-nav-group"><h2>Analyse</h2>
+        <a href="/investor/?view=matches" data-nav-view="matches"><span aria-hidden="true">04</span>Mes matchs</a>
+        <a href="/investor/?view=briefs" data-nav-view="briefs"><span aria-hidden="true">05</span>Mes briefs</a>
+        </div>
+        <div class="investor-nav-group"><h2>Écosystème</h2>
+        <a href="/investor/?view=opportunities" data-nav-view="opportunities"><span aria-hidden="true">06</span>Opportunités</a>
+        <a href="/investor/?view=events" data-nav-view="events"><span aria-hidden="true">07</span>Événements</a>
+        <a href="/investor/?view=connections" data-nav-view="connections"><span aria-hidden="true">08</span>Connexions</a>
+        </div>
+        <div class="investor-nav-group"><h2>Système</h2>
+        <a href="/investor/?view=profile" data-nav-view="profile"><span aria-hidden="true">09</span>Profil</a>
+        </div>
+      </nav>
+      <div class="investor-sidebar-foot">
+        <a href="/workspace/" class="investor-switch-link">Changer d’espace</a>
+        <button class="investor-logout" type="button" data-logout>Se déconnecter</button>
+      </div>
+    </aside>
+    <div class="investor-sidebar-scrim" data-sidebar-scrim></div>
+
+    <div class="investor-frame">
+      <header class="investor-topbar">
+        <button class="investor-icon-button investor-menu-button" type="button" data-open-sidebar aria-label="Ouvrir le menu" aria-expanded="false">☰</button>
+        <div class="investor-breadcrumbs" data-breadcrumbs aria-label="Fil d’Ariane"></div>
+        <div class="investor-account">
+          <span class="investor-account-role">INVESTISSEUR</span>
+          <span class="investor-account-initials" data-investor-initials aria-hidden="true">—</span>
+          <span class="sr-only" data-investor-email></span>
+        </div>
+      </header>
+      <main id="investor-workspace" class="investor-workspace" tabindex="-1">
+        <div class="investor-workspace-inner" data-investor-workspace aria-live="polite"></div>
+      </main>
+    </div>
+  </body>
+</html>

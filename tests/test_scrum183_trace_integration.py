@@ -33,7 +33,7 @@ class TraceAgent:
 
 @pytest.fixture
 async def trace_session() -> AsyncSession:
-    database_url = os.environ.get("DATABASE_URL", "postgresql+asyncpg://regbridge:regbridge@127.0.0.1:55432/regbridge")
+    database_url = os.environ.get("DATABASE_URL", "postgresql+asyncpg://regbridge:regbridge@127.0.0.1:25432/regbridge")
     engine = create_async_engine(database_url, pool_pre_ping=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:

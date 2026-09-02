@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     oidc_authorization_audience: str | None = Field(default=None, alias="OIDC_AUTHORIZATION_AUDIENCE")
     oidc_resource: str | None = Field(default=None, alias="OIDC_RESOURCE")
     document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, alias="DOCUMENT_MAX_UPLOAD_BYTES", gt=0)
-    object_storage_endpoint: str = Field(default="http://localhost:9000", alias="OBJECT_STORAGE_ENDPOINT")
+    object_storage_endpoint: str = Field(default="http://localhost:19000", alias="OBJECT_STORAGE_ENDPOINT")
     object_storage_bucket: str = Field(default="regbridge-documents", alias="OBJECT_STORAGE_BUCKET")
     object_storage_access_key: str = Field(default="local-access-key", alias="OBJECT_STORAGE_ACCESS_KEY")
     object_storage_secret_key: str = Field(default="local-secret-key", alias="OBJECT_STORAGE_SECRET_KEY")
@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     bge_m3_device: str = Field(default="cpu", alias="BGE_M3_DEVICE")
     mistral_api_key: SecretStr | None = Field(default=None, alias="MISTRAL_API_KEY", repr=False)
     mistral_model: str | None = Field(default=None, alias="MISTRAL_MODEL")
+    mistral_ocr_model: str = Field(default="mistral-ocr-latest", alias="MISTRAL_OCR_MODEL")
+    document_external_processing_enabled: bool = Field(default=False, alias="DOCUMENT_EXTERNAL_PROCESSING_ENABLED")
+    document_native_text_min_chars: int = Field(default=32, alias="DOCUMENT_NATIVE_TEXT_MIN_CHARS", ge=1)
+    document_extraction_stale_after_seconds: int = Field(default=900, alias="DOCUMENT_EXTRACTION_STALE_AFTER_SECONDS", gt=0)
+    document_extraction_max_attempts: int = Field(default=3, alias="DOCUMENT_EXTRACTION_MAX_ATTEMPTS", ge=1, le=10)
+    document_extraction_concurrency: int = Field(default=2, alias="DOCUMENT_EXTRACTION_CONCURRENCY", ge=1, le=16)
 
     @property
     def allowed_oidc_algorithms(self) -> list[str]:

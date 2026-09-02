@@ -207,7 +207,7 @@ async def test_role_options_and_update_api_use_the_authenticated_users_database_
 @pytest.mark.asyncio
 async def test_public_browser_config_contains_no_secret() -> None:
     settings = Settings(
-        DATABASE_URL="postgresql+asyncpg://regbridge:regbridge@127.0.0.1:55432/regbridge",
+        DATABASE_URL="postgresql+asyncpg://regbridge:regbridge@127.0.0.1:25432/regbridge",
         OIDC_ISSUER="https://issuer.example.test/",
         OIDC_AUDIENCE="https://api.example.test/",
         OIDC_CLIENT_ID="regbridge-public-spa",

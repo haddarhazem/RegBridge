@@ -6,6 +6,7 @@ import uuid
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.modules.ai.context import ProjectContextProjection, ProjectFactProjection
 from app.modules.ai.projections import AssessmentConclusionProjection, AssessmentProjection, RoadmapItemProjection, RoadmapProjection
@@ -137,3 +138,32 @@ class ProjectContextRepository:
             )
         except Exception:
             return None
+
+    async def load_document_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID):
+        from app.modules.documents.authorization import DocumentAuthorizationPolicy
+        from app.modules.documents.extraction import extraction_status
+        from app.modules.documents.models import Document, DocumentVersion
+        from app.modules.ai.projections import DocumentProjection
+
+        document = await self.session.scalar(select(Document).where(Document.id == document_id, Document.project_id == project_id, Document.deleted_at.is_(None)))
+        membership = await self.session.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id, ProjectMember.status == "active"))
+        if document is None or membership is None or not DocumentAuthorizationPolicy().can_read(document.visibility, document.classification, membership, document.owner_user_id, user_id):
+            return None
+        version = await self.session.scalar(select(DocumentVersion).where(DocumentVersion.id == version_id, DocumentVersion.document_id == document.id, DocumentVersion.malware_scan_status == "clean"))
+        if version is None or extraction_status(version) != "ready":
+            return None
+        return DocumentProjection(id=document.id, title=document.title, document_type=document.document_type, classification=document.classification, visibility=document.visibility, version_id=version.id, version_number=version.version_number, extracted_text=(version.extracted_text or "")[:6000] or None)
+
+    async def load_contract_analysis_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, analysis_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID):
+        from app.modules.ai.projections import ContractAnalysisProjection, ContractObservationProjection
+        from app.modules.documents.authorization import DocumentAuthorizationPolicy
+        from app.modules.documents.contract_analysis_models import ContractAnalysis
+        from app.modules.documents.models import Document
+
+        analysis = await self.session.scalar(select(ContractAnalysis).where(ContractAnalysis.id == analysis_id, ContractAnalysis.project_id == project_id, ContractAnalysis.document_id == document_id, ContractAnalysis.document_version_id == version_id).options(selectinload(ContractAnalysis.findings)))
+        document = await self.session.scalar(select(Document).where(Document.id == document_id, Document.project_id == project_id, Document.deleted_at.is_(None)))
+        membership = await self.session.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id, ProjectMember.status == "active"))
+        if analysis is None or document is None or membership is None or not DocumentAuthorizationPolicy().can_read(document.visibility, document.classification, membership, document.owner_user_id, user_id):
+            return None
+        observations = [ContractObservationProjection(id=finding.id, category=finding.category, source_quote=finding.evidence_quote, document_version_id=finding.evidence_document_version_id, start_char=finding.evidence_start_char, end_char=finding.evidence_end_char) for finding in analysis.findings[:20]]
+        return ContractAnalysisProjection(id=analysis.id, document_id=analysis.document_id, document_version_id=analysis.document_version_id, strategy=analysis.strategy, status=analysis.status, observations=observations, limitations=["Les interprétations sémantiques de risque et de recommandation ne sont pas incluses."])

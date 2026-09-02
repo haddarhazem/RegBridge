@@ -17,4 +17,6 @@ htmlcov/
 # Generated research experiment outputs. Curated Markdown summaries remain tracked.
 artifacts/experiments/*
 !artifacts/experiments/.gitkeep
+artifacts/browser-e2e/*
+!artifacts/browser-e2e/.gitkeep
 *.local-results.json

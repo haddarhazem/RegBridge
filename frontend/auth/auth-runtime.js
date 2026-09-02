@@ -96,6 +96,26 @@
     return response.status === 204 ? null : response.json();
   }
 
+  async function download(path) {
+    const manager = await loadManager();
+    const user = await getOIDCUser();
+    const headers = new Headers({ Accept: '*/*', Authorization: `Bearer ${user.access_token}` });
+    headers.set('X-Request-ID', window.crypto.randomUUID());
+    const response = await fetch(path, { headers });
+    if (response.status === 401) {
+      await manager.removeUser();
+      throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+    }
+    if (!response.ok) throw new AuthError('download_failed', 'Le téléchargement est momentanément indisponible.', response.status);
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const encodedFilename = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    let filename = 'document';
+    if (encodedFilename) {
+      try { filename = decodeURIComponent(encodedFilename).replace(/[\\/\r\n]/g, '') || filename; } catch { /* keep the safe default */ }
+    }
+    return { blob: await response.blob(), filename };
+  }
+
   async function startAuthentication(kind, returnTo) {
     const manager = await loadManager();
     const safeTarget = safeReturnTo(returnTo);
@@ -132,12 +152,13 @@
     }
     if (safeTarget) return safeTarget;
     if (user.roles.length > 1) return '/workspace/';
-    if (user.roles[0] === 'entrepreneur') return '/entrepreneur/';
-    return `/workspace/?role=${encodeURIComponent(user.roles[0])}`;
+    return workspaceDestination(user.roles[0]);
   }
 
   function workspaceDestination(role) {
-    return role === 'entrepreneur' ? '/entrepreneur/' : `/workspace/?role=${encodeURIComponent(role)}`;
+    if (role === 'entrepreneur') return '/entrepreneur/';
+    if (role === 'investor') return '/investor/';
+    return `/workspace/?role=${encodeURIComponent(role)}`;
   }
 
   async function logout() {
@@ -155,6 +176,7 @@
   window.RegBridgeAuthRuntime = Object.freeze({
     AuthError,
     apiRequest,
+    download,
     currentUser,
     destinationFor,
     finishCallback,

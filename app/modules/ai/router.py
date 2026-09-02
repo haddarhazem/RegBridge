@@ -57,7 +57,14 @@ async def create_copilot_response(thread_id: uuid.UUID, data: MessageCreate, pri
         orchestrator = build_regulatory_orchestrator(session)
     except (RegulatoryConfigurationError, RegulatoryRetrievalError, LLMConfigurationError):
         raise HTTPException(status_code=503, detail="Copilot is not configured") from None
-    turn = await ProjectCopilotService(ConversationService(session), orchestrator).respond(principal, thread_id, data.content)
+    turn = await ProjectCopilotService(ConversationService(session), orchestrator).respond(
+        principal,
+        thread_id,
+        data.content,
+        document_id=data.document_id,
+        document_version_id=data.document_version_id,
+        analysis_id=data.analysis_id,
+    )
     return CopilotTurnResponse(
         conversation_id=thread_id,
         user_message=_message_response(turn.user_message),

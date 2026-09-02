@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.identity.schemas import AuthenticatedPrincipal
-from app.modules.ai.projections import AssessmentProjection, RoadmapProjection
+from app.modules.ai.projections import AssessmentProjection, ContractAnalysisProjection, DocumentProjection, RoadmapProjection
 
 
 class OrchestrationRequest(BaseModel):
@@ -21,6 +21,9 @@ class OrchestrationRequest(BaseModel):
     principal: AuthenticatedPrincipal | None = None
     subject_type: Literal["project"] | None = None
     subject_id: uuid.UUID | None = None
+    context_document_id: uuid.UUID | None = None
+    context_version_id: uuid.UUID | None = None
+    context_analysis_id: uuid.UUID | None = None
     intent_hint: str | list[str] = Field(min_length=1)
     locale: str = Field(default="en", max_length=20)
 
@@ -28,6 +31,10 @@ class OrchestrationRequest(BaseModel):
     def validate_subject(self) -> "OrchestrationRequest":
         if (self.subject_type is None) != (self.subject_id is None):
             raise ValueError("subject_type and subject_id must be provided together")
+        if (self.context_document_id is None) != (self.context_version_id is None):
+            raise ValueError("context_document_id and context_version_id must be provided together")
+        if self.context_analysis_id is not None and self.context_document_id is None:
+            raise ValueError("context_analysis_id requires document context")
         return self
 
 
@@ -57,6 +64,8 @@ class AuthorizedContext(BaseModel):
     facts: list[dict[str, object]] = Field(default_factory=list, max_length=50)
     assessment: AssessmentProjection | None = None
     roadmap: RoadmapProjection | None = None
+    document: DocumentProjection | None = None
+    contract_analysis: ContractAnalysisProjection | None = None
 
 
 class AgentRequest(BaseModel):

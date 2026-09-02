@@ -33,6 +33,9 @@ class ProjectCopilotService:
         actor: AuthenticatedPrincipal,
         thread_id: uuid.UUID,
         content: str,
+        document_id: uuid.UUID | None = None,
+        document_version_id: uuid.UUID | None = None,
+        analysis_id: uuid.UUID | None = None,
     ) -> CopilotTurn:
         thread = await self.conversations.get_thread(actor, thread_id)
         if thread.subject_type != "project" or thread.subject_id is None:
@@ -49,6 +52,9 @@ class ProjectCopilotService:
             principal=actor,
             subject_type="project",
             subject_id=thread.subject_id,
+            context_document_id=document_id,
+            context_version_id=document_version_id,
+            context_analysis_id=analysis_id,
             intent_hint="regulatory",
             locale="fr",
         ))
@@ -70,6 +76,11 @@ class ProjectCopilotService:
                     references.append(f"Évaluation réglementaire v{assessment_version}")
                 if isinstance(roadmap_version, int):
                     references.append(f"Roadmap v{roadmap_version}")
+                document_version = result.structured_payload.get("document_version")
+                if isinstance(document_version, int):
+                    references.append(f"Document v{document_version}")
+                if result.structured_payload.get("contract_analysis_id"):
+                    references.append("Analyse contractuelle")
         elif outcome.failures and outcome.failures[0].error_code == "insufficient_evidence":
             answer = "Les sources réglementaires disponibles sont insuffisantes pour répondre de manière fiable."
         else:

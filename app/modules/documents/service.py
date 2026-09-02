@@ -74,6 +74,37 @@ class DocumentService:
             raise HTTPException(status_code=403, detail="Document upload is not permitted")
         return project
 
+    async def list_for_project(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> list[Document]:
+        """Return only non-deleted documents visible to an active project member."""
+        project = await self.session.scalar(select(Project.id).where(Project.id == project_id))
+        membership = await self._membership(project_id, actor.user_id) if project is not None else None
+        if project is None or membership is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        documents = list((await self.session.scalars(
+            select(Document)
+            .where(Document.project_id == project_id, Document.deleted_at.is_(None))
+            .order_by(Document.updated_at.desc(), Document.id)
+        )).all())
+        return [
+            document for document in documents
+            if self.policy.can_read(document.visibility, document.classification, membership, document.owner_user_id, actor.user_id)
+        ]
+
+    async def list_versions(self, actor: AuthenticatedPrincipal, document_id: uuid.UUID) -> list[DocumentVersion]:
+        document, _ = await self._document_for_actor(actor, document_id)
+        return list((await self.session.scalars(
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id == document.id)
+            .order_by(DocumentVersion.version_number.desc())
+        )).all())
+
+    async def get_version(self, actor: AuthenticatedPrincipal, document_id: uuid.UUID, version_id: uuid.UUID) -> DocumentVersion:
+        document, _ = await self._document_for_actor(actor, document_id)
+        version = await self.session.scalar(select(DocumentVersion).where(DocumentVersion.id == version_id, DocumentVersion.document_id == document.id))
+        if version is None:
+            raise HTTPException(status_code=404, detail="Document version not found")
+        return version
+
     async def _audit(self, actor: AuthenticatedPrincipal, action: str, document_id: uuid.UUID, metadata: dict, project_id: uuid.UUID | None = None) -> None:
         self.session.add(
             AuditLog(
@@ -85,6 +116,16 @@ class DocumentService:
                 project_id=project_id,
                 metadata_json=metadata,
             )
+        )
+
+    @staticmethod
+    def _extraction_job(version_id: uuid.UUID) -> DocumentProcessingJob:
+        return DocumentProcessingJob(
+            id=uuid.uuid4(),
+            document_version_id=version_id,
+            job_type="extract_text",
+            idempotency_key=f"document-extraction:{version_id}",
+            status="queued",
         )
 
     async def _scan(self, path: Path) -> ScanResult:
@@ -140,7 +181,9 @@ class DocumentService:
                     document_type=validated.extension.removeprefix("."),
                     classification=classification,
                     visibility=visibility,
-                    processing_status="uploaded" if safe else "quarantined",
+                    # The API exposes extraction as pending while the persisted
+                    # document status follows the V2.1 queued state.
+                    processing_status="queued" if safe else "quarantined",
                 )
                 version = DocumentVersion(
                     id=version_id,
@@ -152,12 +195,19 @@ class DocumentService:
                     size_bytes=size,
                     sha256=checksum,
                     malware_scan_status=scan.status,
-                    extraction_metadata={"scanner_detail": scan.detail} if scan.detail else {},
+                    extraction_metadata={
+                        **({"scanner_detail": scan.detail} if scan.detail else {}),
+                        **({"extraction": {"status": "pending"}} if safe else {}),
+                    },
                     uploaded_by_user_id=actor.user_id,
                 )
                 self.session.add_all([document, version])
                 if safe:
+                    # The extraction job references the immutable version; make
+                    # that row visible before adding the dependent job.
+                    await self.session.flush()
                     document.current_version_id = version_id
+                    self.session.add(self._extraction_job(version_id))
                 await self._audit(actor, "document.created" if safe else "document.quarantined", document_id, {"version_id": str(version_id), "sha256": checksum}, project_id)
             return document, version
         except HTTPException:
@@ -202,13 +252,20 @@ class DocumentService:
                     size_bytes=size,
                     sha256=checksum,
                     malware_scan_status=scan.status,
-                    extraction_metadata={"scanner_detail": scan.detail} if scan.detail else {},
+                    extraction_metadata={
+                        **({"scanner_detail": scan.detail} if scan.detail else {}),
+                        **({"extraction": {"status": "pending"}} if scan.status == "clean" else {}),
+                    },
                     uploaded_by_user_id=actor.user_id,
                 )
                 self.session.add(version)
                 if scan.status == "clean":
+                    # The extraction job references the immutable version; make
+                    # that row visible before adding the dependent job.
+                    await self.session.flush()
                     document.current_version_id = version_id
-                    document.processing_status = "uploaded"
+                    document.processing_status = "queued"
+                    self.session.add(self._extraction_job(version_id))
                 await self._audit(actor, "document.version.created" if scan.status == "clean" else "document.quarantined", document.id, {"version_id": str(version_id), "sha256": checksum}, document.project_id)
             return document, version
         except Exception:
@@ -264,3 +321,15 @@ class DocumentService:
             self.session.add(job)
             await self._audit(actor, "document.processing_job.created", document.id, {"version_id": str(version.id), "job_type": data.job_type}, document.project_id)
         return job
+
+    async def retry_extraction(self, actor: AuthenticatedPrincipal, document_id: uuid.UUID, version_id: uuid.UUID) -> bool:
+        document, membership = await self._document_for_actor(actor, document_id)
+        if not self.policy.can_manage(membership, document.owner_user_id, actor.user_id):
+            raise HTTPException(status_code=403, detail="Document processing retry is not permitted")
+        version = await self.session.scalar(select(DocumentVersion).where(DocumentVersion.id == version_id, DocumentVersion.document_id == document.id))
+        if version is None:
+            raise HTTPException(status_code=404, detail="Document version not found")
+        await self.session.rollback()
+        from app.modules.documents.worker import DocumentExtractionWorker
+
+        return await DocumentExtractionWorker(self.session).retry_failed(version_id)

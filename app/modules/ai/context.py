@@ -10,7 +10,7 @@ from typing import Protocol
 from fastapi import HTTPException, status
 
 from app.modules.ai.contracts import AuthorizedContext, OrchestrationRequest
-from app.modules.ai.projections import AssessmentProjection, RoadmapProjection
+from app.modules.ai.projections import AssessmentProjection, ContractAnalysisProjection, DocumentProjection, RoadmapProjection
 from app.modules.identity.schemas import AuthenticatedPrincipal
 
 
@@ -53,6 +53,10 @@ class ProjectContextRepository(Protocol):
 
     async def load_latest_roadmap_projection(self, project_id: uuid.UUID) -> RoadmapProjection | None: ...
 
+    async def load_document_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID) -> DocumentProjection | None: ...
+
+    async def load_contract_analysis_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, analysis_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID) -> ContractAnalysisProjection | None: ...
+
 
 def _normalized_question(question: str) -> str:
     return "".join(
@@ -76,6 +80,13 @@ def requests_roadmap_context(question: str) -> bool:
     return any(term in normalized for term in (
         "roadmap", "etape", "prochaine etape", "prochaines etapes", "etapes encore",
         "etapes a faire", "que dois-je faire ensuite", "que faire ensuite",
+    ))
+
+
+def requests_document_context(question: str) -> bool:
+    normalized = _normalized_question(question)
+    return any(term in normalized for term in (
+        "document", "contrat", "nda", "clause", "passage", "constat", "extrait",
     ))
 
 
@@ -106,6 +117,8 @@ class AuthorizedContextBuilder:
             raise ContextAuthorizationError("Project context access denied")
         assessment = None
         roadmap = None
+        document = None
+        contract_analysis = None
         if requests_assessment_context(request.question):
             loader = getattr(self.repository, "load_latest_assessment_projection", None)
             if loader is not None:
@@ -114,6 +127,18 @@ class AuthorizedContextBuilder:
             loader = getattr(self.repository, "load_latest_roadmap_projection", None)
             if loader is not None:
                 roadmap = await loader(request.subject_id)
+        if request.context_document_id is not None and request.context_version_id is not None:
+            loader = getattr(self.repository, "load_document_projection", None)
+            if loader is not None:
+                document = await loader(request.subject_id, request.principal.user_id, request.context_document_id, request.context_version_id)
+            if document is None:
+                raise ContextAuthorizationError("Document context access denied")
+        if request.context_analysis_id is not None and request.context_document_id is not None and request.context_version_id is not None:
+            loader = getattr(self.repository, "load_contract_analysis_projection", None)
+            if loader is not None:
+                contract_analysis = await loader(request.subject_id, request.principal.user_id, request.context_analysis_id, request.context_document_id, request.context_version_id)
+            if contract_analysis is None:
+                raise ContextAuthorizationError("Contract analysis context access denied")
         return AuthorizedContext(
             subject_type="project",
             subject_id=request.subject_id,
@@ -129,6 +154,8 @@ class AuthorizedContextBuilder:
             facts=[{"domain": fact.domain, "value": fact.value, "origin": fact.origin, "status": fact.status, "provenance": fact.provenance, "uncertainty": fact.uncertainty} for fact in projection.facts],
             assessment=assessment,
             roadmap=roadmap,
+            document=document,
+            contract_analysis=contract_analysis,
         )
 
 

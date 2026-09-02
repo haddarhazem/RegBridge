@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: regbridge
       POSTGRES_PASSWORD: regbridge
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-25432}:5432"
     volumes:
       - regbridge-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -22,8 +22,8 @@ services:
       MINIO_ROOT_USER: local-access-key
       MINIO_ROOT_PASSWORD: local-secret-key
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_API_HOST_PORT:-19000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-19001}:9001"
     volumes:
       - regbridge-minio-data:/data
 

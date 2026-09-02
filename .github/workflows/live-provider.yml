@@ -1,0 +1,43 @@
+name: Live provider smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mistral-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: live-smoke
+      DATABASE_URL: postgresql+asyncpg://unused:unused@127.0.0.1:5432/unused
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      MISTRAL_MODEL: ${{ secrets.MISTRAL_MODEL }}
+      MISTRAL_OCR_MODEL: mistral-ocr-latest
+      RUN_LIVE_PROVIDER_TESTS: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Require configured provider secrets
+        shell: bash
+        run: |
+          if [[ -z "$MISTRAL_API_KEY" || -z "$MISTRAL_MODEL" ]]; then
+            echo "MISTRAL_API_KEY and MISTRAL_MODEL GitHub secrets are required for this workflow."
+            exit 1
+          fi
+
+      - name: Install live smoke dependencies
+        run: python -m pip install -e ".[test,live]"
+
+      - name: Run opt-in Mistral OCR and generation smoke tests
+        run: python -m pytest tests/live_provider -m live_provider -q

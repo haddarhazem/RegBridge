@@ -13,6 +13,7 @@ from app.modules.ai.services import AgentRunService, _safe_error_message
 from app.modules.documents.authorization import DocumentAuthorizationPolicy
 from app.modules.documents.contract_analysis import ContractExtractionError, ContractExtractor
 from app.modules.documents.contract_analysis_models import ContractAnalysis, ContractFinding
+from app.modules.documents.extraction import extraction_status
 from app.modules.documents.models import Document, DocumentVersion
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.models import ProjectMember
@@ -37,7 +38,7 @@ class ContractAnalysisService:
         version = await self.session.scalar(select(DocumentVersion).where(DocumentVersion.id == version_id, DocumentVersion.document_id == document.id))
         if version is None or version.malware_scan_status != "clean":
             raise HTTPException(status_code=403, detail="Document version is not available")
-        if not version.extracted_text:
+        if extraction_status(version) != "ready" or not version.extracted_text:
             raise HTTPException(status_code=409, detail="Document version text is not available for analysis")
         return document, version
 

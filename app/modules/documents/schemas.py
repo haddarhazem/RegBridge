@@ -31,6 +31,10 @@ class DocumentVersionResponse(BaseModel):
     size_bytes: int
     sha256: str
     malware_scan_status: str
+    extraction_status: Literal["pending", "processing", "ready", "failed"]
+    extraction_method: str | None = None
+    extraction_error: str | None = None
+    extracted_at: datetime | None = None
     created_at: datetime
 
 

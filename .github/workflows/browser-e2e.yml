@@ -1,0 +1,108 @@
+name: Browser E2E
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql+asyncpg://regbridge:regbridge@127.0.0.1:25432/regbridge
+      ENVIRONMENT: test
+      APP_NAME: RegBridge browser E2E
+      OIDC_ISSUER: http://127.0.0.1:18080/realms/regbridge
+      OIDC_AUDIENCE: regbridge-api
+      OIDC_CLIENT_ID: regbridge-frontend
+      OIDC_REDIRECT_URI: http://127.0.0.1:8000/auth/callback/
+      OIDC_POST_LOGOUT_REDIRECT_URI: http://127.0.0.1:8000/auth/login/
+      OIDC_SCOPE: openid profile email
+      DOCUMENT_MAX_UPLOAD_BYTES: 26214400
+      OBJECT_STORAGE_ENDPOINT: http://127.0.0.1:19000
+      OBJECT_STORAGE_BUCKET: regbridge-documents
+      OBJECT_STORAGE_ACCESS_KEY: local-access-key
+      OBJECT_STORAGE_SECRET_KEY: local-secret-key
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_SECURE: "false"
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: "3310"
+      BROWSER_E2E_BASE_URL: http://127.0.0.1:8000
+      BROWSER_E2E_PASSWORD: ${{ secrets.BROWSER_E2E_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install application and browser dependencies
+        run: |
+          python -m pip install -e ".[test,browser]"
+          python -m playwright install --with-deps chromium
+
+      - name: Require disposable browser E2E credential
+        shell: bash
+        run: |
+          if [[ -z "$BROWSER_E2E_PASSWORD" ]]; then
+            echo "BROWSER_E2E_PASSWORD GitHub secret is required for authenticated browser journeys."
+            exit 1
+          fi
+
+      - name: Create disposable Keycloak bootstrap credential
+        shell: bash
+        run: |
+          keycloak_password="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-regbridge"
+          echo "KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=regbridge-ci-admin" >> "$GITHUB_ENV"
+          echo "KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=$keycloak_password" >> "$GITHUB_ENV"
+
+      - name: Start the isolated application services
+        run: docker compose up -d postgres minio minio-init clamav keycloak
+
+      - name: Apply clean migrations
+        run: alembic upgrade head
+
+      - name: Start RegBridge
+        shell: bash
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/regbridge-browser-e2e.log 2>&1 &
+          echo $! > /tmp/regbridge-browser-e2e.pid
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          for _ in range(60):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8000/auth/config", timeout=2) as response:
+                      if response.status == 200:
+                          break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit("RegBridge did not become ready")
+          PY
+
+      - name: Run real-browser journeys
+        run: python -m pytest tests/e2e/browser -m browser_e2e -q
+
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regbridge-browser-e2e-diagnostics
+          path: |
+            artifacts/browser-e2e/
+            /tmp/regbridge-browser-e2e.log
+          if-no-files-found: ignore
+
+      - name: Stop disposable services
+        if: always()
+        run: docker compose down -v

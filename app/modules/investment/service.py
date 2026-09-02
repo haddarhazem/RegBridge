@@ -56,7 +56,7 @@ class InvestorProfileService:
         version=InvestorThesisVersion(investor_profile_id=profile.id,version_number=1,created_by_user_id=actor.user_id,**{field:values.get(field) for field in VALUE_FIELDS})
         self.session.add(version); await self.session.flush(); profile.current_version_id=version.id
         self.session.add(AuditLog(actor_user_id=actor.user_id,actor_type="user",action="investor_thesis.created",resource_type="investor_thesis_version",resource_id=version.id,metadata_json={"version":1}))
-        await self.session.commit(); return await self._response(profile)
+        await self.session.commit(); await self.session.refresh(profile); return await self._response(profile)
 
     async def get(self, actor: AuthenticatedPrincipal) -> InvestorProfile: return await self._response(await self._owned_profile(actor))
 
@@ -70,7 +70,7 @@ class InvestorProfileService:
         version=InvestorThesisVersion(investor_profile_id=profile.id,version_number=current.version_number+1,created_by_user_id=actor.user_id,**values)
         self.session.add(version); await self.session.flush(); profile.current_version_id=version.id
         self.session.add(AuditLog(actor_user_id=actor.user_id,actor_type="user",action="investor_thesis.updated",resource_type="investor_thesis_version",resource_id=version.id,metadata_json={"from_version":current.version_number,"to_version":version.version_number}))
-        await self.session.commit(); return await self._response(profile)
+        await self.session.commit(); await self.session.refresh(profile); return await self._response(profile)
 
     async def versions(self, actor: AuthenticatedPrincipal) -> list[InvestorThesisVersion]:
         profile=await self._owned_profile(actor)

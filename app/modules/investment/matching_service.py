@@ -9,6 +9,7 @@ from app.modules.ai.llm import LLMProvider
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.investment.matching import deterministic_match
 from app.modules.investment.matching_models import MatchingRun
+from app.modules.investment.matching_schemas import MatchingListItem
 from app.modules.investment.matching_verification import explain_with_fallback, safe_explanation
 from app.modules.investment.models import InvestorProfile, InvestorThesisVersion
 from app.modules.projects.models import Project
@@ -95,3 +96,35 @@ class MatchingService:
         if run is None:
             raise HTTPException(status_code=404, detail="Matching run not found")
         return run
+
+    async def list_owned(self, actor: AuthenticatedPrincipal, limit: int = 50, offset: int = 0) -> list[MatchingListItem]:
+        rows = await self.session.execute(
+            select(MatchingRun, Project.display_name, Project.visibility, InvestorThesisVersion.version_number)
+            .join(Project, Project.id == MatchingRun.startup_project_id)
+            .join(InvestorThesisVersion, InvestorThesisVersion.id == MatchingRun.investor_thesis_version_id)
+            .where(MatchingRun.investor_user_id == actor.user_id)
+            .order_by(MatchingRun.created_at.desc(), MatchingRun.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = []
+        for run, display_name, visibility, thesis_version_number in rows:
+            result.append(MatchingListItem(
+                id=run.id,
+                startup_project_id=run.startup_project_id,
+                startup_display_name=display_name if visibility == "public" else None,
+                investor_thesis_version_id=run.investor_thesis_version_id,
+                investor_thesis_version_number=thesis_version_number,
+                created_at=run.created_at,
+                result_summary={
+                    "score": float(run.score) if run.score is not None else None,
+                    "matching_method": run.matching_method,
+                    "matching_method_version": run.matching_method_version,
+                    "explanation_mode": run.explanation_mode,
+                    "result": "COMPLETED",
+                },
+                dimensions=run.dimensions or {},
+                unknown_dimensions=[key for key, value in (run.dimensions or {}).items() if value == "UNKNOWN"],
+                status="COMPLETED",
+            ))
+        return result

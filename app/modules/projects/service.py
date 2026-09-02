@@ -46,6 +46,8 @@ class ProjectService:
         )
 
     async def create(self, actor: AuthenticatedPrincipal, data: ProjectCreate) -> Project:
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             project = Project(owner_user_id=actor.user_id, **data.model_dump())
             self.session.add(project)
@@ -63,6 +65,8 @@ class ProjectService:
         return project
 
     async def create_idea(self, actor: AuthenticatedPrincipal, data: IdeaProjectCreate) -> Project:
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             project = Project(
                 owner_user_id=actor.user_id,
@@ -153,6 +157,8 @@ class ProjectService:
         return fact
 
     async def update_onboarding(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, data: IdeaOnboardingUpdate) -> Project:
+        if self.session.in_transaction():
+            await self.session.commit()
         async with self.session.begin():
             project = await self._project(project_id)
             if project.project_type != "idea":

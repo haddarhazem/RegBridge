@@ -114,6 +114,22 @@ class BriefVersionResponse(BaseModel):
     content: OpportunityBriefContent
 
 
+class BriefListItem(BaseModel):
+    """One current-version projection per owner brief."""
+
+    id: uuid.UUID
+    startup_project_id: uuid.UUID
+    startup_display_name: str | None
+    current_version_id: uuid.UUID
+    current_version_number: int
+    verification_status: str
+    approval_status: str
+    investor_thesis_version_id: uuid.UUID
+    investor_thesis_version_number: int | None
+    created_at: datetime
+    updated_at: datetime | None
+
+
 class BriefShareCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

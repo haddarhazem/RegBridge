@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           alembic current
-          alembic current | grep -q "scrum212_grant_reissue"
+          alembic current | grep -q "self_service_auth"
 
       - name: Run full test suite
         run: python -m pytest -q

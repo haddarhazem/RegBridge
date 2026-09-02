@@ -23,9 +23,10 @@ from app.modules.investment.brief_semantic_verification import verify_semantical
 from app.modules.investment.brief_verification import ClaimDecision, VERIFIER_STRATEGY, VERIFIER_VERSION, verify_frozen_brief
 from app.modules.investment.brief_verification_models import BriefClaimVerification, BriefVerificationRun
 from app.modules.investment.brief_verification_schemas import BriefVerificationResponse, ClaimVerificationResponse
-from app.modules.investment.brief_schemas import BriefEvidenceBundle, BriefVersionCreate, BriefVersionResponse, OpportunityBriefContent
+from app.modules.investment.brief_schemas import BriefEvidenceBundle, BriefListItem, BriefVersionCreate, BriefVersionResponse, OpportunityBriefContent
 from app.modules.investment.matching_models import MatchingRun
 from app.modules.investment.matching_service import MatchingService
+from app.modules.investment.models import InvestorThesisVersion
 from app.modules.projects.models import Project, ProjectFact
 
 
@@ -180,6 +181,53 @@ class OpportunityBriefService:
         await self.get(actor, run_id)
         versions = list((await self.session.scalars(select(InvestorOpportunityBriefVersion).where(InvestorOpportunityBriefVersion.brief_run_id == run_id).order_by(InvestorOpportunityBriefVersion.version_number))).all())
         return [await self.version_response(version) for version in versions]
+
+    async def list_owned(self, actor: AuthenticatedPrincipal, limit: int = 50, offset: int = 0) -> list[BriefListItem]:
+        rows = list((await self.session.execute(
+            select(InvestorOpportunityBriefRun, Project.display_name, Project.visibility)
+            .join(Project, Project.id == InvestorOpportunityBriefRun.startup_project_id)
+            .where(InvestorOpportunityBriefRun.investor_user_id == actor.user_id)
+            .order_by(InvestorOpportunityBriefRun.created_at.desc(), InvestorOpportunityBriefRun.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )).all())
+        runs = [row[0] for row in rows]
+        if not runs:
+            return []
+        run_ids = [run.id for run in runs]
+        versions = list((await self.session.scalars(
+            select(InvestorOpportunityBriefVersion)
+            .where(InvestorOpportunityBriefVersion.brief_run_id.in_(run_ids))
+            .order_by(InvestorOpportunityBriefVersion.brief_run_id, InvestorOpportunityBriefVersion.version_number.desc(), InvestorOpportunityBriefVersion.id.desc())
+        )).all())
+        current_by_run = {}
+        for version in versions:
+            current_by_run.setdefault(version.brief_run_id, version)
+        thesis_ids = [run.investor_thesis_version_id for run in runs]
+        thesis_versions = {
+            item.id: item.version_number
+            for item in (await self.session.scalars(select(InvestorThesisVersion).where(InvestorThesisVersion.id.in_(thesis_ids)))).all()
+        }
+        result = []
+        for run, display_name, visibility in rows:
+            version = current_by_run.get(run.id)
+            if version is None:
+                continue
+            verification_status = await self._verification_status(version)
+            result.append(BriefListItem(
+                id=run.id,
+                startup_project_id=run.startup_project_id,
+                startup_display_name=display_name if visibility == "public" else None,
+                current_version_id=version.id,
+                current_version_number=version.version_number,
+                verification_status=verification_status,
+                approval_status="APPROVED" if version.status == "APPROVED" else "NOT_APPROVED",
+                investor_thesis_version_id=run.investor_thesis_version_id,
+                investor_thesis_version_number=thesis_versions.get(run.investor_thesis_version_id),
+                created_at=run.created_at,
+                updated_at=None,
+            ))
+        return result
 
     async def create_version(self, actor: AuthenticatedPrincipal, run_id: uuid.UUID, data: BriefVersionCreate) -> BriefVersionResponse:
         parent = await self.get(actor, run_id)

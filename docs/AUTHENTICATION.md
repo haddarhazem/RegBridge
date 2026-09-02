@@ -78,7 +78,7 @@ Keycloak is bundled only as a reproducible local development/test identity provi
    python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
    ```
 
-5. Open `http://127.0.0.1:8000/auth/register/`. The RegBridge registration action redirects to Keycloak; select **Register** there to create a synthetic local identity. Keycloak owns identity and credentials, while RegBridge assigns `entrepreneur`, `investor`, and `researcher` through its role-onboarding page.
+5. Open `http://127.0.0.1:8000/auth/register/`. The RegBridge registration action redirects to Keycloak; select **Register** there to create a synthetic local identity. Keycloak owns identity and credentials, while RegBridge assigns `entrepreneur`, `investor`, and `researcher` through its role-onboarding page. The repeatable browser journey is automated with the Python Playwright command in `docs/runbooks/automated-validation.md`.
 
 The versioned import at `infra/keycloak/regbridge-realm.json` creates realm `regbridge` and public client `regbridge-frontend`. It enables Authorization Code Flow, requires PKCE S256, disables implicit and password/direct grants, uses exact localhost redirect/origin/logout URIs, emits the explicit `regbridge-api` access-token audience, and contains no users, passwords, or RegBridge business roles. Re-import into a clean Keycloak data store when validating changes to the realm file; an existing realm is not overwritten at startup.
 
@@ -90,7 +90,7 @@ Local endpoints:
 - callback: `http://127.0.0.1:8000/auth/callback/`;
 - post-logout destination: `http://127.0.0.1:8000/auth/login/`.
 
-For a real local E2E, create four synthetic identities through provider registration, then verify entrepreneur, investor, researcher, and combined multi-role onboarding. Logout and use a fresh browser context for the returning-login check. Never copy access tokens into RegBridge or browser developer tools, and never record test passwords or tokens in test output.
+For a real local browser E2E, use the dedicated Playwright harness. It creates unique synthetic entrepreneur identities from `BROWSER_E2E_PASSWORD`, exercises the real OIDC redirect, and keeps failure artifacts under the ignored `artifacts/browser-e2e/` directory. Never copy access tokens into RegBridge or browser developer tools, and never record test passwords or tokens in test output.
 
 Troubleshooting:
 
@@ -168,4 +168,4 @@ Logout clears local OIDC/user/workspace state and uses the provider's RP-initiat
 
 ## Tests
 
-Automated tests use ephemeral RSA keys and test-only PostgreSQL rows. They do not contact a public identity provider and do not bypass JWT signature validation in production. A real first-login/relogin browser E2E requires the manual provider setup above and must not be reported as passing until it has run.
+The ordinary automated suite uses ephemeral RSA keys and test-only PostgreSQL rows; it does not contact a public identity provider. Real first-login/relogin browser validation is automated and explicitly environment-dependent: run the Playwright harness against the local Keycloak/application stack, and report it as `NOT RUN` when that stack is unavailable. The separate Mistral smoke tests are automated opt-in checks and never run during ordinary regression.

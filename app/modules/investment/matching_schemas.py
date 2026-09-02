@@ -29,3 +29,18 @@ class MatchingRunResponse(BaseModel):
     llm_model: str | None
     prompt_version: str | None
     created_at: datetime
+
+
+class MatchingListItem(BaseModel):
+    """Safe owner-list projection; snapshots remain available only via detail."""
+
+    id: uuid.UUID
+    startup_project_id: uuid.UUID
+    startup_display_name: str | None
+    investor_thesis_version_id: uuid.UUID
+    investor_thesis_version_number: int | None
+    created_at: datetime
+    result_summary: dict
+    dimensions: dict
+    unknown_dimensions: list[str]
+    status: str

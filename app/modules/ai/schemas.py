@@ -23,6 +23,9 @@ class MessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(min_length=1)
+    document_id: uuid.UUID | None = None
+    document_version_id: uuid.UUID | None = None
+    analysis_id: uuid.UUID | None = None
     # Accepted only for compatibility with clients that send a role; the server ignores it.
     role: str | None = Field(default=None, exclude=True)
 

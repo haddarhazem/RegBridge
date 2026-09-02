@@ -6,7 +6,7 @@ import re
 
 from app.modules.ai.agents import Agent
 from app.modules.ai.contracts import AgentRequest, AgentResult
-from app.modules.ai.context import requests_assessment_context, requests_roadmap_context
+from app.modules.ai.context import requests_assessment_context, requests_document_context, requests_roadmap_context
 from app.modules.ai.llm import LLMGenerationRequest, LLMMessage, LLMProvider, LLMProviderError
 from app.modules.regulatory.contracts import RegulatoryEvidence
 from app.modules.regulatory.retrieval import RegulatoryRetriever, RegulatoryRetrievalError
@@ -40,6 +40,8 @@ class RegulatoryAgent(Agent):
             return self._context_only_result("Aucune évaluation réglementaire n’est encore disponible pour ce projet.", "assessment_unavailable")
         if requests_roadmap_context(request.question) and request.authorized_context.roadmap is None:
             return self._context_only_result("Aucune roadmap n’a encore été générée pour ce projet.", "roadmap_unavailable")
+        if requests_document_context(request.question) and request.authorized_context.document is None and request.authorized_context.contract_analysis is None:
+            return self._context_only_result("Sélectionnez un document ou ouvrez une analyse pour poser une question sur ce document.", "document_context_unavailable")
         try:
             evidence = await self.retriever.retrieve(request.question)
         except RegulatoryRetrievalError:
@@ -101,6 +103,8 @@ class RegulatoryAgent(Agent):
                 "roadmap_version": roadmap.version if roadmap else None,
                 "assessment_source_refs": _assessment_source_refs(assessment),
                 "roadmap_source_refs": _roadmap_source_refs(roadmap),
+                "document_version": request.authorized_context.document.version_number if request.authorized_context.document else None,
+                "contract_analysis_id": str(request.authorized_context.contract_analysis.id) if request.authorized_context.contract_analysis else None,
                 **_execution_payload("generation", generated.execution),
                 **_verification_payload(verification),
             },
@@ -153,6 +157,22 @@ def _context_text(request: AgentRequest) -> str:
             f"Version: {roadmap.version}\n"
             + "\n".join(f"{item.priority_order}. [{item.status}] {item.item_type}: {item.title} — {item.justification}" for item in roadmap.items)
         )
+    if context.document is not None:
+        document = context.document
+        sections.append(
+            "AUTHORIZED DOCUMENT VERSION\n"
+            f"Title: {document.title}\n"
+            f"Type: {document.document_type}\n"
+            f"Version: {document.version_number}\n"
+            f"Text: {document.extracted_text or 'No extracted text is available.'}"
+        )
+    if context.contract_analysis is not None:
+        analysis = context.contract_analysis
+        sections.append(
+            "CONTRACT ANALYSIS\n"
+            f"Status: {analysis.status}\n"
+            + "\n".join(f"{item.category}: {item.source_quote}" for item in analysis.observations)
+        )
     return "\n".join(sections) or "Authorized project context is empty."
 
 
@@ -181,6 +201,10 @@ def _safe_public_answer(answer: str, evidence: list[RegulatoryEvidence], request
         if context.roadmap is not None:
             values.extend([str(context.roadmap.id), str(context.roadmap.regulatory_assessment_id)])
             values.extend(ref for item in context.roadmap.items for ref in item.source_conclusion_refs)
+        if context.document is not None:
+            values.extend([str(context.document.id), str(context.document.version_id)])
+        if context.contract_analysis is not None:
+            values.extend([str(context.contract_analysis.id), str(context.contract_analysis.document_id), str(context.contract_analysis.document_version_id)])
         for value in values:
             sanitized = sanitized.replace(value, "[source reference]")
     return re.sub(r"(?i)(retrieval\s+score|score)\s*[:=]\s*[-+]?\d+(?:\.\d+)?", r"\1: [redacted]", sanitized)

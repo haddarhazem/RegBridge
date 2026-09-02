@@ -38,7 +38,9 @@ class ClamAVScanner(MalwareScanner):
         finally:
             writer.close()
             await writer.wait_closed()
-        message = result.decode("utf-8", errors="replace").strip()
+        # ClamAV terminates INSTREAM replies with a NUL byte. Remove it before
+        # classifying the response or persisting diagnostic metadata as JSONB.
+        message = result.decode("utf-8", errors="replace").rstrip("\x00\r\n").strip()
         if message.endswith("OK"):
             return ScanResult("clean")
         if "FOUND" in message:

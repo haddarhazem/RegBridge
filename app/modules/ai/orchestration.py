@@ -132,6 +132,10 @@ class Orchestrator:
             refs.append(TraceResourceRef(resource_type="message", resource_id=request.message_id))
         if request.subject_type and request.subject_id:
             refs.append(TraceResourceRef(resource_type=request.subject_type, resource_id=request.subject_id))
+        if request.context_document_id and request.context_version_id:
+            refs.append(TraceResourceRef(resource_type="document", resource_id=request.context_document_id, version_id=request.context_version_id))
+        if request.context_analysis_id:
+            refs.append(TraceResourceRef(resource_type="external", resource_id=request.context_analysis_id, locator="contract_analysis"))
         return AgentRunRequestTrace(intent=capability, locale=request.locale, context_refs=refs)
 
     async def _create_run(self, request: OrchestrationRequest, *, agent_name: str, capability: str, parent_run_id=None):

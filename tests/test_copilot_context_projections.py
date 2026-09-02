@@ -13,6 +13,9 @@ from app.modules.ai.contracts import OrchestrationRequest
 from app.modules.ai.projections import (
     AssessmentConclusionProjection,
     AssessmentProjection,
+    ContractAnalysisProjection,
+    ContractObservationProjection,
+    DocumentProjection,
     RoadmapItemProjection,
     RoadmapProjection,
 )
@@ -36,6 +39,20 @@ class ProjectionRepository:
             assessment_version=2,
             items=[RoadmapItemProjection(id=uuid.uuid4(), item_type="obligation", title="First", priority_order=1, status="in_progress", justification="Because")],
         )
+        self.document_loads = 0
+        self.analysis_loads = 0
+        self.document = DocumentProjection(
+            id=uuid.uuid4(), title="Contract", document_type="txt", classification="confidential", visibility="private",
+            version_id=uuid.uuid4(), version_number=2, extracted_text="Authorized contract text",
+        )
+        self.analysis = ContractAnalysisProjection(
+            id=uuid.uuid4(), document_id=self.document.id, document_version_id=self.document.version_id,
+            strategy="v2_structured_evidence", status="completed",
+            observations=[ContractObservationProjection(
+                id=uuid.uuid4(), category="UNCERTAINTY", source_quote="Authorized passage",
+                document_version_id=self.document.version_id, start_char=0, end_char=18,
+            )],
+        )
 
     async def has_active_membership(self, project_id, user_id):
         return user_id == self.user_id
@@ -56,11 +73,22 @@ class ProjectionRepository:
         self.roadmap_loads += 1
         return self.roadmap
 
+    async def load_document_projection(self, project_id, user_id, document_id, version_id):
+        self.document_loads += 1
+        return self.document if document_id == self.document.id and version_id == self.document.version_id else None
 
-def request(user_id, question):
+    async def load_contract_analysis_projection(self, project_id, user_id, analysis_id, document_id, version_id):
+        self.analysis_loads += 1
+        return self.analysis if analysis_id == self.analysis.id and document_id == self.document.id and version_id == self.document.version_id else None
+
+
+def request(user_id, question, *, document=None, analysis=None):
     return OrchestrationRequest(
         principal=AuthenticatedPrincipal(user_id=user_id, email="owner@example.test", roles=("entrepreneur",), provider="test"),
         subject_type="project", subject_id=uuid.uuid4(), question=question, intent_hint="regulatory", locale="fr",
+        context_document_id=document.id if document else None,
+        context_version_id=document.version_id if document else None,
+        context_analysis_id=analysis.id if analysis else None,
     )
 
 
@@ -99,3 +127,44 @@ async def test_context_authorization_denies_before_assessment_or_roadmap_load():
         await builder.build(request(denied_user, "Pourquoi cette obligation s'applique-t-elle à mon projet ?"), ["regulatory"])
     assert repository.assessment_loads == 0
     assert repository.roadmap_loads == 0
+
+
+@pytest.mark.asyncio
+async def test_context_loads_exact_authorized_document_and_contract_analysis():
+    user_id = uuid.uuid4()
+    repository = ProjectionRepository(user_id)
+    builder = AuthorizedContextBuilder(repository, ProjectAuthorizationService(repository))
+
+    context = await builder.build(
+        request(user_id, "Explique ce contrat", document=repository.document, analysis=repository.analysis),
+        ["regulatory"],
+    )
+
+    assert context.document.version_id == repository.document.version_id
+    assert context.document.extracted_text == "Authorized contract text"
+    assert context.contract_analysis.id == repository.analysis.id
+    assert context.contract_analysis.observations[0].source_quote == "Authorized passage"
+    assert repository.document_loads == repository.analysis_loads == 1
+
+
+@pytest.mark.asyncio
+async def test_document_context_requires_exact_pair_and_rejects_missing_projection():
+    user_id = uuid.uuid4()
+    repository = ProjectionRepository(user_id)
+    builder = AuthorizedContextBuilder(repository, ProjectAuthorizationService(repository))
+
+    with pytest.raises(ValueError):
+        OrchestrationRequest(
+            principal=AuthenticatedPrincipal(user_id=user_id, email="owner@example.test", roles=("entrepreneur",), provider="test"),
+            subject_type="project", subject_id=uuid.uuid4(), intent_hint="regulatory",
+            context_document_id=repository.document.id,
+        )
+
+    with pytest.raises(ContextAuthorizationError):
+        await builder.build(
+            request(user_id, "Explique ce contrat", document=DocumentProjection(
+                id=uuid.uuid4(), title="Other", document_type="txt", classification="confidential", visibility="private",
+                version_id=uuid.uuid4(), version_number=1,
+            )),
+            ["regulatory"],
+        )

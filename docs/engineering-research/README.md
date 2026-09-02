@@ -19,7 +19,8 @@ routing, or ordinary refactoring.
 - [Result summaries](results/README.md)
 - [Research decisions](decisions/README.md)
 
-Experiments are manually and explicitly run initially; production tests remain
-mandatory CI. No experiment result, decision, or production architecture is
+Research experiments are manually and explicitly triggered initially; browser
+and provider validation are executable automated suites documented separately.
+Production tests remain mandatory CI. No experiment result, decision, or production architecture is
 validly claimed until the relevant run has been performed and its limitations
 documented.
