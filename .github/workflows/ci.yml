@@ -62,7 +62,10 @@ jobs:
         shell: bash
         run: |
           alembic current
-          alembic current | grep -q "self_service_auth"
+          expected="$(alembic heads | awk '{print $1}' | sort)"
+          actual="$(alembic current | awk '{print $1}' | sort)"
+          test -n "$expected"
+          test "$actual" = "$expected"
 
       - name: Run full test suite
         run: python -m pytest -q

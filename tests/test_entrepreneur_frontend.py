@@ -7,6 +7,7 @@ from app.main import app
 
 
 ROOT = Path(__file__).parents[1] / "frontend"
+AUTH = ROOT / "auth"
 ENTREPRENEUR = ROOT / "entrepreneur"
 
 
@@ -97,7 +98,7 @@ def test_views_cover_real_project_workflow_and_safety_copy() -> None:
         assert f"function {behavior}" in views
     assert "Déclaré par vous" in views
     assert "Déduit à partir de vos réponses" in views
-    assert "Obligations" in views and "Recommandations" in views and "Incertitudes" in views
+    assert "Obligations identifiées" in views and "Actions recommandées" in views and "Points à vérifier / couverture manquante" in views
     assert "Ce score n’est pas une certification officielle" in views
     assert "ne remplace pas une validation juridique professionnelle" in views
     assert "Aucun changement automatique n’est appliqué" in views
@@ -195,7 +196,7 @@ def test_copilot_uses_persisted_backend_conversation_and_authorized_project_iden
     assert "subject_type: 'project'" in api
     assert "subject_id: projectId" in api
     assert "/conversations/${conversationId}/responses" in api
-    assert "api.conversation(conversation.id)" in app_script
+    assert "api.conversation(conversationId, controller.signal, 15000)" in app_script
     assert "api.askCopilot" in app_script
     assert "AbortController" in app_script
     assert "state.copilot.messages" in app_script
@@ -209,6 +210,20 @@ def test_copilot_uses_persisted_backend_conversation_and_authorized_project_iden
     assert "openai" not in api.lower() + app_script.lower()
 
 
+def test_copilot_stop_and_duplicate_submission_guards_are_explicit() -> None:
+    app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
+    runtime = (AUTH / "auth-runtime.js").read_text(encoding="utf-8")
+
+    assert "if (!content || state.copilot.loading || !state.project) return;" in app_script
+    assert "function cancelCopilot()" in app_script
+    assert "document.querySelector('[data-cancel-copilot]').addEventListener('click', cancelCopilot)" in app_script
+    assert "controller.signal, 15000" in app_script
+    assert "ownsCopilot(copilot, controller)" in app_script
+    assert "function requestSignal(options)" in runtime
+    assert "state.copilot.loading = false;" in app_script
+    assert "state.copilot.controller = null;" in app_script
+
+
 def test_facts_and_assessment_enforce_real_confirmation_gate() -> None:
     views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
     app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
@@ -220,7 +235,7 @@ def test_facts_and_assessment_enforce_real_confirmation_gate() -> None:
     assert "api.rejectFact" in app_script
     assert "pending_confirmation" in app_script + views
     assert "Certaines informations doivent encore être vérifiées." in app_script + views
-    assert "Analyse basée sur un instantané immuable des informations confirmées" in views
+    assert "Instantané immuable des informations confirmées" in views
     assert "await api.inferFacts(state.project.id)" in app_script
 
 

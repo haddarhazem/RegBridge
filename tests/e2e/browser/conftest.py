@@ -345,17 +345,19 @@ async def create_project(page: Page, description: str = "RegBridge synthetic ser
     return project_name
 
 
-async def complete_onboarding(page: Page) -> None:
+async def complete_onboarding(page: Page, values: dict[str, str] | None = None) -> None:
     for _ in range(8):
+        await expect(page.locator('[data-workspace]')).to_have_attribute('aria-busy', 'false')
         form = page.locator("form[data-form='onboarding']")
         if not await form.count():
             return
         current_field = await form.get_attribute("data-field")
-        await form.locator("textarea[name='value']").fill("Synthetic RegBridge test information.")
+        await form.locator("textarea[name='value']").fill((values or {}).get(current_field, "Synthetic RegBridge test information."))
         await form.locator("input[name='confirm']").check()
         await form.get_by_role("button", name=re.compile("Enregistrer et continuer", re.IGNORECASE)).click()
         await page.wait_for_function(
             """previousField => {
+                if (document.querySelector('[data-workspace]').getAttribute('aria-busy') === 'true') return false;
                 const nextForm = document.querySelector("form[data-form='onboarding']");
                 return !nextForm || nextForm.dataset.field !== previousField;
             }""",

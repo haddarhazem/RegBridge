@@ -4,6 +4,7 @@
   const RETURN_KEY = 'regbridge.auth.return_to';
   const WORKSPACE_KEY = 'regbridge.workspace.active';
   let managerPromise;
+  let renewalPromise;
 
   class AuthError extends Error {
     constructor(code, message, status) {
@@ -47,7 +48,7 @@
         scope: config.scope,
         extraQueryParams: config.authorization_extra_params || {},
         loadUserInfo: false,
-        automaticSilentRenew: false,
+        automaticSilentRenew: true,
         monitorSession: false,
         userStore: storage,
         stateStore: storage,
@@ -56,9 +57,36 @@
     return managerPromise;
   }
 
-  async function getOIDCUser() {
-    const manager = await loadManager();
-    const user = await manager.getUser();
+  function abortError() {
+    return new DOMException('The operation was aborted', 'AbortError');
+  }
+
+  function abortable(promise, signal) {
+    if (!signal) return promise;
+    if (signal.aborted) return Promise.reject(abortError());
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        cleanup();
+        reject(abortError());
+      };
+      const cleanup = () => signal.removeEventListener('abort', onAbort);
+      signal.addEventListener('abort', onAbort, { once: true });
+      promise.then((value) => { cleanup(); resolve(value); }, (error) => { cleanup(); reject(error); });
+    });
+  }
+
+  async function getOIDCUser(manager, signal) {
+    manager = manager || await loadManager();
+    let user = await abortable(manager.getUser(), signal);
+    if (user && user.expired) {
+      try {
+        user = await abortable(renewUser(manager), signal);
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        await manager.removeUser();
+        throw new AuthError('unauthenticated', 'Votre session d’authentification est absente ou expirée.', 401);
+      }
+    }
     if (!user || user.expired || !user.access_token) {
       if (user) await manager.removeUser();
       throw new AuthError('unauthenticated', 'Votre session d’authentification est absente ou expirée.', 401);
@@ -66,45 +94,117 @@
     return user;
   }
 
-  async function apiRequest(path, options = {}) {
-    const manager = await loadManager();
-    const user = await getOIDCUser();
+  function renewUser(manager) {
+    if (!renewalPromise) {
+      renewalPromise = manager.signinSilent().finally(() => { renewalPromise = null; });
+    }
+    return renewalPromise;
+  }
+
+  function requestHeaders(options, user, requestId) {
     const headers = new Headers(options.headers || {});
     headers.set('Accept', 'application/json');
     headers.set('Authorization', `Bearer ${user.access_token}`);
-    headers.set('X-Request-ID', window.crypto.randomUUID());
+    headers.set('X-Request-ID', requestId);
     if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-    const response = await fetch(path, { ...options, headers });
-    if (response.status === 401) {
-      await manager.removeUser();
-      throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+    return headers;
+  }
+
+  function requestSignal(options) {
+    const timeoutMs = options.timeoutMs;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return { signal: options.signal, timedOut: () => false, cleanup: () => {} };
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const abort = () => controller.abort();
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort();
+      else options.signal.addEventListener('abort', abort, { once: true });
     }
-    if (!response.ok) {
-      let detail = response.status === 403
-        ? 'Votre compte ne dispose pas de cette autorisation.'
-        : 'Le service est momentanément indisponible.';
+    return {
+      signal: controller.signal,
+      timedOut: () => timedOut,
+      cleanup: () => {
+        window.clearTimeout(timer);
+        options.signal?.removeEventListener('abort', abort);
+      },
+    };
+  }
+
+  async function apiRequest(path, options = {}) {
+    const { timeoutMs, ...fetchOptions } = options;
+    const firstRequest = requestSignal({ ...fetchOptions, timeoutMs });
+    try {
+      const manager = await abortable(loadManager(), firstRequest.signal);
+      let user = await getOIDCUser(manager, firstRequest.signal);
+      const requestId = window.crypto.randomUUID();
+      let response;
       try {
-        const payload = await response.json();
-        if (response.status === 422) detail = 'Les informations envoyées ne sont pas valides.';
-        if (response.status === 409) detail = 'Ce compte nécessite une association contrôlée.';
-        if (typeof payload.detail === 'string' && response.status < 500) detail = payload.detail;
-      } catch {
-        // Keep the safe generic message.
+        response = await fetch(path, { ...fetchOptions, signal: firstRequest.signal, headers: requestHeaders(fetchOptions, user, requestId) });
+        if (response.status === 401) {
+          try {
+            user = await abortable(renewUser(manager), firstRequest.signal);
+            response = await fetch(path, { ...fetchOptions, signal: firstRequest.signal, headers: requestHeaders(fetchOptions, user, requestId) });
+          } catch (error) {
+            if (firstRequest.timedOut()) throw new AuthError('request_timeout', 'Le service met plus de temps que prévu. Réessayez.', 504);
+            if (error?.name === 'AbortError') throw error;
+            await manager.removeUser();
+            throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+          }
+          if (response.status === 401) {
+            await manager.removeUser();
+            throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+          }
+        }
+      } catch (error) {
+        if (firstRequest.timedOut()) throw new AuthError('request_timeout', 'Le service met plus de temps que prévu. Réessayez.', 504);
+        throw error;
       }
-      throw new AuthError(response.status === 403 ? 'forbidden' : 'api_error', detail, response.status);
+      if (!response.ok) {
+        let detail = response.status === 403
+          ? 'Votre compte ne dispose pas de cette autorisation.'
+          : 'Le service est momentanément indisponible.';
+        try {
+          const payload = await response.json();
+          if (response.status === 422) detail = 'Les informations envoyées ne sont pas valides.';
+          if (response.status === 409) detail = 'Ce compte nécessite une association contrôlée.';
+          if (typeof payload.detail === 'string' && response.status < 500) detail = payload.detail;
+        } catch {
+          // Keep the safe generic message.
+        }
+        throw new AuthError(response.status === 403 ? 'forbidden' : 'api_error', detail, response.status);
+      }
+      return response.status === 204 ? null : await abortable(response.json(), firstRequest.signal);
+    } catch (error) {
+      if (firstRequest.timedOut()) throw new AuthError('request_timeout', 'Le service met plus de temps que prévu. Réessayez.', 504);
+      throw error;
+    } finally {
+      firstRequest.cleanup();
     }
-    return response.status === 204 ? null : response.json();
   }
 
   async function download(path) {
     const manager = await loadManager();
-    const user = await getOIDCUser();
-    const headers = new Headers({ Accept: '*/*', Authorization: `Bearer ${user.access_token}` });
-    headers.set('X-Request-ID', window.crypto.randomUUID());
-    const response = await fetch(path, { headers });
+    let user = await getOIDCUser();
+    const requestId = window.crypto.randomUUID();
+    const headers = () => new Headers({ Accept: '*/*', Authorization: `Bearer ${user.access_token}`, 'X-Request-ID': requestId });
+    let response = await fetch(path, { headers: headers() });
     if (response.status === 401) {
-      await manager.removeUser();
-      throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+      try {
+        user = await renewUser(manager);
+        response = await fetch(path, { headers: headers() });
+      } catch {
+        await manager.removeUser();
+        throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+      }
+      if (response.status === 401) {
+        await manager.removeUser();
+        throw new AuthError('unauthenticated', 'Votre session a expiré. Reconnectez-vous.', 401);
+      }
     }
     if (!response.ok) throw new AuthError('download_failed', 'Le téléchargement est momentanément indisponible.', response.status);
     const disposition = response.headers.get('Content-Disposition') || '';

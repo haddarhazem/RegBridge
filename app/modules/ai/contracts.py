@@ -58,7 +58,7 @@ class AuthorizedContext(BaseModel):
     activity: str | None = Field(default=None, max_length=500)
     sector: str | None = Field(default=None, max_length=160)
     technology: str | None = Field(default=None, max_length=500)
-    data_context: str | None = Field(default=None, max_length=500)
+    data_context: str | None = Field(default=None, max_length=2000)
     target_market: str | None = Field(default=None, max_length=120)
     location: str | None = Field(default=None, max_length=160)
     facts: list[dict[str, object]] = Field(default_factory=list, max_length=50)

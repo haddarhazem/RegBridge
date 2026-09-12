@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import threading
 
 import pytest
 
@@ -80,3 +81,21 @@ async def test_retriever_rejects_wrong_embedding_dimension_and_qdrant_failure():
 ])
 def test_organization_mapping(domain, expected):
     assert resolve_organization(domain) == expected
+
+
+@pytest.mark.asyncio
+async def test_sync_embedding_and_search_do_not_run_on_asgi_event_loop():
+    event_loop_thread = threading.get_ident()
+
+    class ThreadCheckedEmbedder(FakeEmbedder):
+        def encode(self, question):
+            assert threading.get_ident() != event_loop_thread
+            return super().encode(question)
+
+    class ThreadCheckedQdrant(FakeQdrant):
+        def query_points(self, *args, **kwargs):
+            assert threading.get_ident() != event_loop_thread
+            return super().query_points(*args, **kwargs)
+
+    result = await RegulatoryRetriever(embedder=ThreadCheckedEmbedder([0.0] * 1024), client=ThreadCheckedQdrant([point('one')])).retrieve('question')
+    assert len(result) == 1

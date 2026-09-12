@@ -78,6 +78,8 @@ class ComplianceService:
             for key, value in data.model_dump(exclude_unset=True).items():
                 setattr(control, key, value)
             self._audit(actor, "compliance.control_updated", project_id, control.id, "project_compliance_control", {"fields": sorted(data.model_dump(exclude_unset=True))})
+        await self.session.refresh(control, attribute_names=["updated_at"])
+        setattr(control, "definition", await self.session.get(ComplianceControlDefinition, control.control_definition_id))
         return control
 
     async def attach_evidence(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, data: EvidenceCreate) -> ComplianceEvidence:

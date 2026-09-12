@@ -205,7 +205,13 @@ class Orchestrator:
                         await self.agent_run_service.succeed_run(child_id, self._agent_trace(result))
                     else:
                         failures.append(result)
-                        await self.agent_run_service.fail_run(child_id, error_code=result.error_code or "agent_failed", error_message="Structured agent failure")
+                        failure_kwargs = {
+                            "error_code": result.error_code or "agent_failed",
+                            "error_message": "Structured agent failure",
+                        }
+                        if result.structured_payload:
+                            failure_kwargs["response_payload"] = self._agent_trace(result)
+                        await self.agent_run_service.fail_run(child_id, **failure_kwargs)
                 except Exception:
                     failure = AgentResult(
                         agent_name=agent.name,

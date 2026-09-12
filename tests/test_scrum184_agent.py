@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from app.modules.ai.contracts import AgentRequest, AuthorizedContext
-from app.modules.ai.llm import LLMGenerationResponse
+from app.modules.ai.llm import LLMGenerationResponse, LLM_MESSAGE_MAX_CHARS, LLM_REQUEST_MAX_MESSAGES
 from app.modules.regulatory.agent import RegulatoryAgent
 from app.modules.regulatory.contracts import RegulatoryEvidence
 
@@ -105,3 +105,52 @@ async def test_agent_passes_only_bounded_authorized_context():
     assert "Country: FR" in prompt
     assert "objectif" in prompt
     assert "point-1" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_enersight_style_context_and_evidence_are_partitioned_without_contract_error():
+    data_context = (
+        "Le projet prévoit de collecter et traiter principalement des données énergétiques et techniques : "
+        "consommation d’électricité et de gaz, données issues de compteurs intelligents et de capteurs IoT, "
+        "informations sur les bâtiments et équipements, historiques de consommation et factures énergétiques. "
+        "Il traitera également des données personnelles limitées pour la gestion des comptes utilisateurs, comme "
+        "le nom, l’adresse e-mail professionnelle, le rôle dans l’entreprise et les journaux de connexion. "
+        "Aucune donnée de santé, biométrique ou financière sensible n’est prévue."
+    )
+    provider = FakeProvider()
+    agent = RegulatoryAgent(
+        retriever=FakeRetriever([
+            RegulatoryEvidence(
+                point_id=f"point-{index}",
+                rank=index,
+                retrieval_score=0.9,
+                organization="CNIL",
+                content=f"Obligation officielle {index}. " + ("Contexte réglementaire. " * 220),
+            )
+            for index in range(1, 6)
+        ]),
+        provider=provider,
+    )
+    context = AuthorizedContext(
+        subject_type="project",
+        subject_id=uuid.uuid4(),
+        project_type="idea",
+        country_code="FR",
+        activity="Analyse et optimisation énergétique des PME",
+        sector="EnergyTech / SaaS B2B",
+        technology="Cloud, Data Analytics, AI/ML, IoT",
+        data_context=data_context,
+        target_market="France / French SMEs",
+        location="Île-de-France, France",
+    )
+
+    result = await agent.run(request(context=context))
+
+    assert len(data_context) > 500
+    assert result.status == "succeeded"
+    generation_request = provider.requests[0]
+    serialized = "\n".join(message.content for message in generation_request.messages)
+    assert len(generation_request.messages) <= LLM_REQUEST_MAX_MESSAGES
+    assert max(len(message.content) for message in generation_request.messages) <= LLM_MESSAGE_MAX_CHARS
+    assert data_context in serialized
+    assert all(f"point-{index}" not in serialized for index in range(1, 6))

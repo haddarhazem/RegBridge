@@ -21,13 +21,15 @@ async def test_browser_harness_launches_chromium_reads_dom_and_has_safe_trace(tr
 @pytest.mark.e2e
 async def test_entrepreneur_critical_journey_logout_relogin_and_persistence(browser_page, synthetic_user):
     await authenticate(browser_page, synthetic_user)
-    project_name = await create_project(browser_page)
+    description = "RegBridge synthetic service for French businesses."
+    project_name = await create_project(browser_page, description=description)
     await complete_onboarding(browser_page)
 
     await browser_page.reload()
     await expect(browser_page.locator("[data-project-switcher]")).to_contain_text(project_name)
     await browser_page.get_by_role("link", name=re.compile("Mon projet", re.IGNORECASE)).click()
     await expect(browser_page.get_by_role("heading", name=re.compile(project_name))).to_be_visible()
+    await expect(browser_page.locator(".page-header")).to_contain_text(description)
     await browser_page.get_by_role("link", name=re.compile("Profil", re.IGNORECASE)).click()
     await browser_page.locator("[data-logout]").click()
     await browser_page.wait_for_url(re.compile(r"/auth/login/"), timeout=30_000)

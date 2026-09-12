@@ -42,7 +42,7 @@ class IdeaOnboardingUpdate(BaseModel):
     activity: str | None = Field(default=None, max_length=500)
     sector: str | None = Field(default=None, max_length=160)
     technology: str | None = Field(default=None, max_length=500)
-    data: str | None = Field(default=None, max_length=500)
+    data: str | None = Field(default=None, max_length=2000)
     target_market: str | None = Field(default=None, max_length=120)
     location: str | None = Field(default=None, max_length=160)
     confirm: list[OnboardingField] = Field(default_factory=list, max_length=6)

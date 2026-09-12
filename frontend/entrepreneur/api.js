@@ -1,7 +1,17 @@
 (function createEntrepreneurApi() {
   'use strict';
 
-  const request = (...args) => window.RegBridgeAuthRuntime.apiRequest(...args);
+  const request = (path, options = {}) => window.RegBridgeAuthRuntime.apiRequest(path, { timeoutMs: options.method && options.method !== 'GET' ? 180000 : 20000, ...options });
+  async function roadmapRequest(path, options) {
+    const value = await request(path, options);
+    if (value === null) return null; // The latest endpoint explicitly permits no roadmap.
+    if (!value || typeof value.id !== 'string' || !Array.isArray(value.items)) {
+      const error = new Error('Le format de la roadmap reçu est invalide. Réessayez ou contactez le support.');
+      error.code = 'invalid_roadmap_response';
+      throw error;
+    }
+    return value;
+  }
   const json = (method, body) => ({ method, body: JSON.stringify(body) });
 
   window.RegBridgeEntrepreneurApi = Object.freeze({
@@ -23,10 +33,10 @@
     assessments: (projectId) => request(`/projects/${projectId}/assessments`),
     assessment: (projectId, version) => request(`/projects/${projectId}/assessments/${version}`),
     generateAssessment: (projectId, question) => request(`/projects/${projectId}/assessments`, json('POST', { question })),
-    latestRoadmap: (projectId) => request(`/projects/${projectId}/roadmaps/latest`),
+    latestRoadmap: (projectId) => roadmapRequest(`/projects/${projectId}/roadmaps/latest`),
     roadmaps: (projectId) => request(`/projects/${projectId}/roadmaps`),
-    roadmap: (projectId, version) => request(`/projects/${projectId}/roadmaps/${version}`),
-    generateRoadmap: (projectId, assessmentId) => request(`/projects/${projectId}/roadmaps`, json('POST', { regulatory_assessment_id: assessmentId })),
+    roadmap: (projectId, version) => roadmapRequest(`/projects/${projectId}/roadmaps/${version}`),
+    generateRoadmap: (projectId, assessmentId) => roadmapRequest(`/projects/${projectId}/roadmaps`, json('POST', { regulatory_assessment_id: assessmentId })),
     updateRoadmapItem: (projectId, version, itemId, status) => request(`/projects/${projectId}/roadmaps/${version}/items/${itemId}`, json('PATCH', { status })),
     uploadDocument: (projectId, file, options = {}) => {
       const form = new FormData();
@@ -64,9 +74,9 @@
     calculateScore: (projectId, frameworkVersionId = null) => request(`/projects/${projectId}/compliance/scores`, json('POST', { framework_version_id: frameworkVersionId })),
     latestScore: (projectId, frameworkVersionId = null) => request(`/projects/${projectId}/compliance/scores/latest${frameworkVersionId ? `?framework_version_id=${encodeURIComponent(frameworkVersionId)}` : ''}`),
     scoreHistory: (projectId, frameworkVersionId = null) => request(`/projects/${projectId}/compliance/scores/history${frameworkVersionId ? `?framework_version_id=${encodeURIComponent(frameworkVersionId)}` : ''}`),
-    conversations: () => request('/conversations'),
-    conversation: (conversationId) => request(`/conversations/${conversationId}`),
-    createConversation: (projectId, title) => request('/conversations', json('POST', { title, subject_type: 'project', subject_id: projectId })),
-    askCopilot: (conversationId, content, signal, context = {}) => request(`/conversations/${conversationId}/responses`, { ...json('POST', { content, ...context }), signal }),
+    conversations: (signal, timeoutMs) => request('/conversations', { signal, timeoutMs }),
+    conversation: (conversationId, signal, timeoutMs) => request(`/conversations/${conversationId}`, { signal, timeoutMs }),
+    createConversation: (projectId, title, signal, timeoutMs) => request('/conversations', { ...json('POST', { title, subject_type: 'project', subject_id: projectId }), signal, timeoutMs }),
+    askCopilot: (conversationId, content, signal, context = {}) => request(`/conversations/${conversationId}/responses`, { ...json('POST', { content, ...context }), signal, timeoutMs: 180000 }),
   });
 })();

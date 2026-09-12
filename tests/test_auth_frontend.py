@@ -46,6 +46,8 @@ def test_browser_auth_uses_oidc_code_pkce_library_and_centralized_bearer_client(
     assert "WebStorageStateStore({ store: window.sessionStorage })" in runtime
     assert "signinRedirect(" in runtime
     assert "signinRedirectCallback()" in runtime
+    assert "signinSilent()" in runtime
+    assert "automaticSilentRenew: true" in runtime
     assert "signoutRedirect()" in runtime
     assert "Authorization', `Bearer ${user.access_token}`" in runtime
     assert "apiRequest('/me')" in runtime

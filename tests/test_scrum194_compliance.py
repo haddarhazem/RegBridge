@@ -12,6 +12,7 @@ from app.modules.compliance.models import ComplianceControlDefinition, Complianc
 from app.modules.compliance.schemas import AdoptionCreate, ControlStatePatch, EvidenceCreate, EvidenceRevoke
 from app.modules.compliance.service import ComplianceService
 from app.modules.compliance.score_service import ComplianceScoreService
+from app.modules.compliance.router import update_control
 from app.modules.documents.models import Document, DocumentVersion
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.identity.models import User
@@ -90,6 +91,24 @@ async def cleanup(factory, ids):
         await session.execute(delete(Project).where(Project.id.in_([project_id, other_project_id])))
         await session.execute(delete(User).where(User.id.in_([owner.user_id, other.user_id])))
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_control_update_response_is_complete_in_fresh_session(compliance_factory):
+    ids = await create_fixture(compliance_factory)
+    project_id, _, _, owner, _, _, version_id, _ = ids
+    try:
+        async with compliance_factory() as session:
+            service = ComplianceService(session)
+            await service.adopt(owner, project_id, AdoptionCreate(framework_version_id=version_id))
+            control_id = (await service.controls(owner, project_id))[0].id
+        async with compliance_factory() as session:
+            response = await update_control(project_id, control_id, ControlStatePatch(status='IN_PROGRESS'), owner, session)
+            assert response.status == 'IN_PROGRESS'
+            assert response.definition is not None
+            assert response.updated_at is not None
+    finally:
+        await cleanup(compliance_factory, ids)
 
 
 @pytest.mark.asyncio

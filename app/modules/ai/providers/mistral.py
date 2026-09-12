@@ -45,7 +45,9 @@ class MistralLLMProvider:
             )
         except Exception as exc:
             dependency_result(dependency="mistral", operation=request.operation, status="error", duration_ms=elapsed_ms(started), error_category="DEPENDENCY_UNAVAILABLE")
-            error = LLMProviderUnavailableError("Mistral generation service is unavailable", category="provider_unavailable")
+            http_status = getattr(exc, "status_code", None) if isinstance(getattr(exc, "status_code", None), int) else None
+            category = "provider_rate_limited" if http_status == 429 else "provider_unavailable"
+            error = LLMProviderUnavailableError("Mistral generation service is unavailable", category=category)
             error.duration_ms = (time.perf_counter() - started) * 1000
             error.provider = "mistral"
             error.model = self.model
@@ -53,7 +55,7 @@ class MistralLLMProvider:
             error.operation = request.operation
             error.cause_type = type(exc).__name__
             error.cause_message = _safe_provider_message(exc)
-            error.http_status = getattr(exc, "status_code", None) if isinstance(getattr(exc, "status_code", None), int) else None
+            error.http_status = http_status
             raise error from exc
 
         try:

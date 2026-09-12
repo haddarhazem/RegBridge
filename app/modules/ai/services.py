@@ -149,6 +149,8 @@ class AgentRunService:
             if target == "succeeded" and response_payload is not None:
                 run.response_payload = self._json_payload(response_payload)
             if target == "failed":
+                if response_payload is not None:
+                    run.response_payload = self._json_payload(response_payload)
                 run.error_code = error_code[:80] if error_code else "run_failed"
                 run.error_message = _safe_error_message(error_message or "Agent run failed")
             await self.session.flush()
@@ -162,8 +164,8 @@ class AgentRunService:
     async def succeed_run(self, run_id: uuid.UUID, response_payload: AgentRunResponseTrace) -> AgentRun:
         return await self._transition(run_id, "succeeded", response_payload=response_payload)
 
-    async def fail_run(self, run_id: uuid.UUID, *, error_code: str, error_message: str) -> AgentRun:
-        return await self._transition(run_id, "failed", error_code=error_code, error_message=error_message)
+    async def fail_run(self, run_id: uuid.UUID, *, error_code: str, error_message: str, response_payload: AgentRunResponseTrace | None = None) -> AgentRun:
+        return await self._transition(run_id, "failed", error_code=error_code, error_message=error_message, response_payload=response_payload)
 
     async def cancel_run(self, run_id: uuid.UUID) -> AgentRun:
         return await self._transition(run_id, "cancelled")

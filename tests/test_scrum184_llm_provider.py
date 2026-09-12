@@ -75,3 +75,17 @@ async def test_mistral_failure_is_controlled_and_does_not_leak_secret():
     with pytest.raises(LLMProviderUnavailableError) as error:
         await provider.generate(LLMGenerationRequest(messages=[LLMMessage(role="user", content="Bonjour")]))
     assert "test-secret" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_mistral_rate_limit_is_preserved_as_a_distinct_safe_category():
+    rate_limit_error = RuntimeError("rate limited")
+    rate_limit_error.status_code = 429
+    client = FakeClient(error=rate_limit_error)
+    provider = MistralLLMProvider(api_key=SecretStr("test-secret"), model="mistral-test", client=client)
+
+    with pytest.raises(LLMProviderUnavailableError) as error:
+        await provider.generate(LLMGenerationRequest(messages=[LLMMessage(role="user", content="Bonjour")]))
+
+    assert error.value.category == "provider_rate_limited"
+    assert error.value.http_status == 429

@@ -1,12 +1,13 @@
 """Production construction of the approved regulatory orchestrator."""
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import get_settings
 
 from app.modules.ai.agents import AgentRegistry
 from app.modules.ai.context import AuthorizedContextBuilder, ProjectAuthorizationService
 from app.modules.ai.orchestration import DeterministicIntentClassifier, Orchestrator, Router
 from app.modules.ai.services import AgentRunService
-from app.modules.ai.providers.mistral import get_mistral_provider
+from app.modules.ai.providers.selection import get_llm_provider
 from app.modules.projects.repositories import ProjectContextRepository
 from app.modules.regulatory.agent import RegulatoryAgent
 from app.modules.regulatory.retrieval import get_regulatory_retriever
@@ -19,7 +20,9 @@ def build_regulatory_orchestrator(session: AsyncSession) -> Orchestrator:
         router=Router(AgentRegistry([
             RegulatoryAgent(
                 retriever=get_regulatory_retriever(),
-                provider=get_mistral_provider(),
+                provider=get_llm_provider(),
+                generation_max_tokens=get_settings().regulatory_generation_max_tokens,
+                verification_max_tokens=get_settings().regulatory_verification_max_tokens,
             )
         ])),
         context_builder=AuthorizedContextBuilder(

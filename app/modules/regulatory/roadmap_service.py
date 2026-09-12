@@ -40,6 +40,8 @@ class LaunchRoadmapService:
         if assessment.verification_verdict == "block" or assessment.status != "completed":
             raise HTTPException(status_code=409, detail="A verified assessment is required for roadmap generation")
         items = generate_typed_items(assessment.result or {})
+        if not items:
+            raise HTTPException(status_code=409, detail="The assessment has no structured conclusions. Generate a new regulatory assessment before creating a roadmap.")
         if self.session.in_transaction():
             await self.session.commit()
         async with self.session.begin():

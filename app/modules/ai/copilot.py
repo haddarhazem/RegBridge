@@ -36,6 +36,7 @@ class ProjectCopilotService:
         document_id: uuid.UUID | None = None,
         document_version_id: uuid.UUID | None = None,
         analysis_id: uuid.UUID | None = None,
+        request_id: uuid.UUID | None = None,
     ) -> CopilotTurn:
         thread = await self.conversations.get_thread(actor, thread_id)
         if thread.subject_type != "project" or thread.subject_id is None:
@@ -46,6 +47,7 @@ class ProjectCopilotService:
 
         user_message = await self.conversations.add_user_message(actor, thread.id, content)
         outcome = await self.orchestrator.run(OrchestrationRequest(
+            request_id=request_id or uuid.uuid4(),
             conversation_id=thread.id,
             message_id=user_message.id,
             question=content,
@@ -83,6 +85,11 @@ class ProjectCopilotService:
                     references.append("Analyse contractuelle")
         elif outcome.failures and outcome.failures[0].error_code == "insufficient_evidence":
             answer = "Les sources réglementaires disponibles sont insuffisantes pour répondre de manière fiable."
+        elif outcome.failures and outcome.failures[0].structured_payload.get("provider_http_status") == 429:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Copilot rate limit reached",
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

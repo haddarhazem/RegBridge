@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Any, Protocol
 
 from qdrant_client import QdrantClient
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings, get_settings
 from app.modules.regulatory.contracts import RegulatoryEvidence
@@ -87,10 +88,10 @@ class RegulatoryRetriever:
     async def retrieve(self, question: str) -> list[RegulatoryEvidence]:
         started = time.perf_counter()
         try:
-            vector = self.embedder.encode(question)
+            vector = await run_in_threadpool(self.embedder.encode, question)
             if len(vector) != self.vector_dimension:
                 raise RegulatoryRetrievalError("Regulatory query embedding has an invalid dimension")
-            response = self.client.query_points(
+            response = await run_in_threadpool(self.client.query_points,
                 self.collection,
                 query=vector,
                 limit=self.top_k,

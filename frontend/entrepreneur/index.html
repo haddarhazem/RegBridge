@@ -55,21 +55,27 @@
       </footer>
     </div>
     <div class="drawer-scrim" data-drawer-scrim></div>
-    <aside class="copilot-drawer" data-copilot-drawer role="dialog" aria-modal="true" aria-labelledby="copilot-title" aria-hidden="true">
+    <aside class="copilot-drawer" data-copilot-drawer role="dialog" aria-modal="true" aria-labelledby="copilot-title" aria-hidden="true" inert>
       <header>
         <div><p class="eyebrow">CONTEXTE PROJET</p><h2 id="copilot-title">Copilote RegBridge</h2></div>
-        <button class="icon-button" type="button" data-close-copilot aria-label="Fermer le copilote">×</button>
+        <div class="copilot-window-controls"><button class="icon-button" type="button" data-expand-copilot aria-label="Agrandir le copilote" aria-pressed="false">⛶</button><button class="icon-button" type="button" data-close-copilot aria-label="Masquer le copilote sans arrêter la réponse">×</button></div>
       </header>
       <div class="copilot-content">
         <section class="copilot-context" aria-label="Contexte actif">
           <p class="eyebrow">CONTEXTE ACTIF</p>
           <strong class="copilot-project" data-copilot-project>Aucun projet actif</strong>
           <small data-copilot-project-type></small>
+          <details><summary data-copilot-context-count>Informations confirmées</summary><dl data-copilot-context-details></dl></details>
           <p>Le Copilote utilise uniquement les informations auxquelles vous avez accès.</p>
         </section>
         <div class="copilot-notice" data-copilot-notice role="status" hidden></div>
         <div class="copilot-quick-actions" data-copilot-quick-actions aria-label="Questions suggérées"></div>
         <div class="copilot-messages" data-copilot-messages aria-live="polite"></div>
+        <div class="copilot-history">
+          <button type="button" data-new-copilot>Nouvelle conversation</button>
+          <button type="button" data-show-copilot-history>Historique</button>
+          <select data-copilot-history aria-label="Conversation à reprendre" hidden></select>
+        </div>
         <div class="copilot-error" data-copilot-error role="alert" hidden></div>
         <div class="copilot-generating" data-copilot-generating role="status" hidden><span class="rb-spinner" aria-hidden="true"></span><span>RegBridge analyse le contexte autorisé…</span><button type="button" data-cancel-copilot>Arrêter</button></div>
         <form class="copilot-form" data-copilot-form>

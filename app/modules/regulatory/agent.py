@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import re
+from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.modules.ai.agents import Agent
 from app.modules.ai.contracts import AgentRequest, AgentResult
 from app.modules.ai.context import requests_assessment_context, requests_document_context, requests_roadmap_context
-from app.modules.ai.llm import LLMGenerationRequest, LLMMessage, LLMProvider, LLMProviderError
+from app.modules.ai.llm import (
+    LLMGenerationRequest,
+    LLMMessage,
+    LLMProvider,
+    LLMProviderError,
+    LLM_MESSAGE_MAX_CHARS,
+    LLM_REQUEST_MAX_MESSAGES,
+)
 from app.modules.regulatory.contracts import RegulatoryEvidence
 from app.modules.regulatory.retrieval import RegulatoryRetriever, RegulatoryRetrievalError
 from app.modules.regulatory.verification import ResponseVerificationService, VerificationResult
@@ -24,14 +33,40 @@ metadata. Do not invent legal requirements or unavailable title/date metadata.
 """
 
 
+class RegulatoryPromptTooLarge(ValueError):
+    """The generation prompt cannot fit the bounded provider-neutral contract."""
+
+    def __init__(self, message_count: int) -> None:
+        self.message_count = message_count
+        super().__init__("Regulatory generation prompt exceeds the bounded message capacity")
+
+
+class AssessmentDraft(BaseModel):
+    """Typed generation contract for the existing assessment/roadmap consumers."""
+    model_config = ConfigDict(extra="forbid")
+    answer: str = Field(min_length=1, max_length=16000)
+    obligations: list[Annotated[str, Field(min_length=1, max_length=4000)]] = Field(max_length=20)
+    recommendations: list[Annotated[str, Field(min_length=1, max_length=4000)]] = Field(max_length=20)
+    missing_information: list[Annotated[str, Field(min_length=1, max_length=4000)]] = Field(max_length=20)
+
+    def verification_text(self) -> str:
+        sections = [self.answer]
+        for label, values in (("Obligations", self.obligations), ("Recommandations", self.recommendations), ("Informations manquantes", self.missing_information)):
+            if values:
+                sections.append(label + "\n" + "\n".join(values))
+        return "\n\n".join(sections)
+
+
 class RegulatoryAgent(Agent):
     name = "regulatory-agent"
     capabilities = ("regulatory",)
 
-    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None) -> None:
+    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
         self.retriever = retriever
         self.provider = provider
-        self.verifier = verifier or ResponseVerificationService(provider=provider)
+        self.generation_max_tokens = generation_max_tokens
+        self.structured_assessment = structured_assessment
+        self.verifier = verifier or ResponseVerificationService(provider=provider, max_tokens=verification_max_tokens)
 
     async def run(self, request: AgentRequest) -> AgentResult:
         if not request.question.strip():
@@ -54,13 +89,38 @@ class RegulatoryAgent(Agent):
             for index, item in enumerate(evidence, start=1)
         )
         context = _context_text(request)
-        user_prompt = f"USER QUESTION\n{request.question}\n\nAUTHORIZED PROJECT CONTEXT\n{context}\n\nRETRIEVED REGULATORY EVIDENCE\n{evidence_prompt}"
         prompt_version = "scrum184-regulatory-answer-v1"
+        draft = None
         try:
-            generated = await self.provider.generate(LLMGenerationRequest(messages=[
-                LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS),
-                LLMMessage(role="user", content=user_prompt),
-            ], prompt_version=prompt_version, operation="regulatory_answer_generation"))
+            messages = _generation_messages(request.question, context, evidence_prompt)
+            response_format = None
+            if self.structured_assessment:
+                messages[0] = LLMMessage(role="system", content=messages[0].content + "\nReturn the assessment JSON schema. Populate obligations only with requirements supported by the retrieved evidence and applicable to the confirmed facts. Keep recommendations separate. Record missing facts and evidence gaps in missing_information. Do not turn hypothetical applicability into a definite obligation. No technical identifiers in any string.")
+                response_format = {"type":"json_schema", "json_schema":{"name":"AssessmentDraft", "schema":AssessmentDraft.model_json_schema()}}
+                prompt_version = "regulatory-assessment-structured-v1"
+            generated = await self.provider.generate(LLMGenerationRequest(
+                messages=messages,
+                max_tokens=self.generation_max_tokens,
+                prompt_version=prompt_version,
+                operation="regulatory_answer_generation",
+                response_format=response_format,
+            ))
+            if self.structured_assessment:
+                draft = AssessmentDraft.model_validate_json(generated.content)
+        except ValidationError:
+            return self._failure("invalid_assessment_output", "The assessment response did not match the required structured contract")
+        except RegulatoryPromptTooLarge as exc:
+            return self._failure(
+                "prompt_too_large",
+                "The regulatory request is too large to process safely",
+                structured_payload={
+                    "status": "failed",
+                    "error_category": "prompt_too_large",
+                    "message_count": exc.message_count,
+                    "evidence_count": len(evidence),
+                    "prompt_version": prompt_version,
+                },
+            )
         except LLMProviderError as exc:
             return self._failure(
                 "generation_unavailable",
@@ -73,15 +133,20 @@ class RegulatoryAgent(Agent):
                     "error_category": exc.category,
                     "duration_ms": exc.duration_ms,
                     "estimated_cost": None,
+                    "evidence_count": len(evidence),
+                    "provider_exception_type": exc.cause_type,
+                    "provider_http_status": exc.http_status,
+                    **_message_metrics(messages),
                 },
             )
 
         assessment = request.authorized_context.assessment
         roadmap = request.authorized_context.roadmap
         public_sources = _unique_values([item.organization for item in evidence] + (assessment.sources if assessment else []))
+        answer = draft.verification_text() if draft else generated.content
         verification = await self.verifier.verify(
             question=request.question,
-            answer=generated.content,
+            answer=answer,
             evidence=evidence,
             public_sources=public_sources,
             cited_evidence_ids=[item.point_id for item in evidence],
@@ -90,14 +155,18 @@ class RegulatoryAgent(Agent):
             agent_name=self.name,
             capability=request.capability,
             status="succeeded",
-            answer=_safe_public_answer(generated.content, evidence, request),
+            answer=_safe_public_answer(answer, evidence, request),
+            findings=[_safe_public_answer(value, evidence, request) for value in draft.obligations] if draft else [],
+            recommendations=[_safe_public_answer(value, evidence, request) for value in draft.recommendations] if draft else [],
+            missing_information=[_safe_public_answer(value, evidence, request) for value in draft.missing_information] if draft else [],
             sources=public_sources,
             evidence=[item.model_dump() for item in evidence],
             structured_payload={
                 "retrieval_method": "dense",
                 "embedding_model": "BAAI/bge-m3",
                 "top_k": 5,
-                "provider": "mistral",
+                **_message_metrics(messages),
+                "provider": generated.execution.provider if generated.execution else None,
                 "model": generated.model,
                 "assessment_version": assessment.version if assessment else None,
                 "roadmap_version": roadmap.version if roadmap else None,
@@ -140,6 +209,12 @@ def _context_text(request: AgentRequest) -> str:
         f"Project type: {context.project_type}" if context.project_type else None,
         f"Country: {context.country_code}" if context.country_code else None,
         f"User goal: {context.user_goal}" if context.user_goal else None,
+        f"Activity: {context.activity}" if context.activity else None,
+        f"Sector: {context.sector}" if context.sector else None,
+        f"Technology: {context.technology}" if context.technology else None,
+        f"Data context: {context.data_context}" if context.data_context else None,
+        f"Target market: {context.target_market}" if context.target_market else None,
+        f"Location: {context.location}" if context.location else None,
     ]
     sections = [value for value in values if value]
     if context.assessment is not None:
@@ -174,6 +249,53 @@ def _context_text(request: AgentRequest) -> str:
             + "\n".join(f"{item.category}: {item.source_quote}" for item in analysis.observations)
         )
     return "\n".join(sections) or "Authorized project context is empty."
+
+
+def _partition_labeled(label: str, value: str) -> list[LLMMessage]:
+    """Split a labeled section without dropping characters or its section label."""
+
+    if not value:
+        return [LLMMessage(role="user", content=label)]
+
+    messages: list[LLMMessage] = []
+    offset = 0
+    part_number = 1
+    while offset < len(value):
+        prefix = f"{label} / PART {part_number}\n"
+        capacity = LLM_MESSAGE_MAX_CHARS - len(prefix)
+        if capacity <= 0:
+            raise RegulatoryPromptTooLarge(LLM_REQUEST_MAX_MESSAGES + 1)
+        messages.append(LLMMessage(role="user", content=prefix + value[offset:offset + capacity]))
+        offset += capacity
+        part_number += 1
+    return messages
+
+
+def _generation_messages(question: str, context: str, evidence: str) -> list[LLMMessage]:
+    """Build the generation request within the shared LLM size contract."""
+
+    combined = f"USER QUESTION\n{question}\n\nAUTHORIZED PROJECT CONTEXT\n{context}\n\nRETRIEVED REGULATORY EVIDENCE\n{evidence}"
+    if len(combined) <= LLM_MESSAGE_MAX_CHARS:
+        return [
+            LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS),
+            LLMMessage(role="user", content=combined),
+        ]
+
+    messages = [LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS)]
+    messages.extend(_partition_labeled("USER QUESTION", question))
+    messages.extend(_partition_labeled("AUTHORIZED PROJECT CONTEXT", context))
+    messages.extend(_partition_labeled("RETRIEVED REGULATORY EVIDENCE", evidence))
+    if len(messages) > LLM_REQUEST_MAX_MESSAGES:
+        raise RegulatoryPromptTooLarge(len(messages))
+    return messages
+
+
+def _message_metrics(messages: list[LLMMessage]) -> dict[str, int]:
+    return {
+        "generation_message_count": len(messages),
+        "generation_max_message_chars": max(len(message.content) for message in messages),
+        "generation_total_prompt_chars": sum(len(message.content) for message in messages),
+    }
 
 
 def _unique_organizations(evidence: list[RegulatoryEvidence]) -> list[str]:

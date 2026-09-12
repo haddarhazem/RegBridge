@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.ai.providers.mistral import get_mistral_provider
+from app.modules.ai.providers.selection import get_llm_provider
 from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace, ModelTraceMetadata, TraceResourceRef, TraceSourceRef
 from app.modules.ai.services import AgentRunService, _safe_error_message
 from app.modules.documents.authorization import DocumentAuthorizationPolicy
@@ -76,7 +76,7 @@ class ContractAnalysisService:
         analysis.agent_run_id = run.id
         await self.session.commit()
         try:
-            provider = self.provider or get_mistral_provider()
+            provider = self.provider or get_llm_provider()
             output, execution = await ContractExtractor(provider).extract(text=version.extracted_text, document_version_id=version.id)
             async with self.session.begin():
                 analysis = await self.session.scalar(select(ContractAnalysis).where(ContractAnalysis.id == analysis.id).with_for_update())

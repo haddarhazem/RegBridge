@@ -24,7 +24,7 @@ class Project(Base):
     activity: Mapped[str | None] = mapped_column(String(500))
     sector: Mapped[str | None] = mapped_column(String(160))
     technology: Mapped[str | None] = mapped_column(String(500))
-    data_context: Mapped[str | None] = mapped_column(String(500))
+    data_context: Mapped[str | None] = mapped_column(Text)
     location: Mapped[str | None] = mapped_column(String(160))
     current_progress: Mapped[str | None] = mapped_column(String(80))
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, server_default="FR")

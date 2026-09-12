@@ -9,6 +9,7 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import get_settings
 
 from app.modules.ai.context import AuthorizedContextBuilder, ProjectAuthorizationService
 from app.modules.ai.contracts import OrchestrationRequest
@@ -24,7 +25,7 @@ from app.modules.regulatory.assessment_contracts import AssessmentConclusion, As
 from app.modules.regulatory.assessment_models import AssessmentInputSnapshot, RegulatoryAssessment
 from app.modules.regulatory.retrieval import RegulatoryConfigurationError, RegulatoryRetrievalError, get_regulatory_retriever
 from app.modules.regulatory.agent import _unique_organizations
-from app.modules.ai.providers.mistral import get_mistral_provider
+from app.modules.ai.providers.selection import get_llm_provider
 
 
 class RegulatoryAssessmentService:
@@ -88,7 +89,12 @@ class RegulatoryAssessmentService:
         repository = ProjectContextRepository(self.session)
         return Orchestrator(
             classifier=DeterministicIntentClassifier(),
-            router=Router(AgentRegistry([RegulatoryAgent(retriever=get_regulatory_retriever(), provider=get_mistral_provider())])),
+            router=Router(AgentRegistry([RegulatoryAgent(
+                retriever=get_regulatory_retriever(), provider=get_llm_provider(),
+                generation_max_tokens=get_settings().regulatory_generation_max_tokens,
+                verification_max_tokens=get_settings().regulatory_verification_max_tokens,
+                structured_assessment=True,
+            )])),
             context_builder=AuthorizedContextBuilder(repository, ProjectAuthorizationService(repository)),
             agent_run_service=AgentRunService(self.session),
         )
@@ -119,6 +125,8 @@ class RegulatoryAssessmentService:
             outcome = await orchestrator.run(OrchestrationRequest(
                 question=self._question(question, snapshot.facts),
                 principal=actor,
+                subject_type="project",
+                subject_id=project_id,
                 intent_hint="regulatory",
                 locale="fr",
             ))
@@ -131,6 +139,15 @@ class RegulatoryAssessmentService:
             status = "blocked" if verdict == "block" else "completed"
             agent_run_id = payload.run_id
             reasons = [str(value) for value in payload.warnings]
+            if status == "blocked":
+                result = AssessmentResult(
+                    uncertainties=[AssessmentConclusion(
+                        conclusion_id="uncertainty-verification",
+                        statement="L’évaluation a été bloquée car la réponse générée n’a pas pu être vérifiée de manière fiable.",
+                        category="uncertainty",
+                    )]
+                )
+                evidence = []
         else:
             result = AssessmentResult(uncertainties=[AssessmentConclusion(conclusion_id="uncertainty-1", statement="L'évaluation n'a pas pu être générée de manière fiable.", category="uncertainty")])
             evidence = []

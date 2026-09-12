@@ -105,6 +105,8 @@ async def test_snapshot_filtering_immutability_versioning_structure_sources_and_
             snapshot = await session.get(AssessmentInputSnapshot, first.snapshot_id)
             assert {item["value"] for item in snapshot.facts} == {"AI", "health", "rule-based software"}
             assert "pending secret" not in fake.requests[0].question
+            assert fake.requests[0].subject_type == "project"
+            assert fake.requests[0].subject_id == project_id
             assert first.result["obligations"][0]["category"] == "obligation"
             assert first.result["recommendations"][0]["category"] == "recommendation"
             assert first.result["uncertainties"][0]["category"] == "uncertainty"
@@ -199,6 +201,9 @@ async def test_blocked_warning_and_generation_failure_are_explicit_safe_states(a
             blocked = await TestService(session, FakeOrchestrator(verdict="block")).generate(owner, project_id, "Évaluez")
             assert blocked.status == "blocked"
             assert blocked.verification_verdict == "block"
+            assert blocked.result["answer"] == ""
+            assert blocked.result["obligations"] == []
+            assert blocked.result["recommendations"] == []
             warned = await TestService(session, FakeOrchestrator(verdict="pass_with_warnings")).generate(owner, project_id, "Évaluez")
             assert warned.status == "completed"
             assert warned.verification_verdict == "pass_with_warnings"

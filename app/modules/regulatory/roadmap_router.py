@@ -57,6 +57,9 @@ async def get_roadmap(project_id: uuid.UUID, version: int, principal: Principal,
 @router.patch("/{project_id}/roadmaps/{version}/items/{item_id}", response_model=RoadmapItemResponse)
 async def update_roadmap_item(project_id: uuid.UUID, version: int, item_id: uuid.UUID, data: RoadmapItemStatusUpdate, principal: Principal, session: Session):
     item = await LaunchRoadmapService(session).update_item(principal, project_id, version, item_id, data.status)
+    # The database-generated on-update timestamp expires after the UPDATE.
+    # Load it asynchronously before constructing the synchronous response DTO.
+    await session.refresh(item, attribute_names=["updated_at"])
     return RoadmapItemResponse(
         id=item.id, roadmap_id=item.roadmap_id, item_type=item.item_type, title=item.title, justification=item.justification,
         priority_order=item.priority_order, status=item.status, source_conclusion_refs=item.source_conclusion_refs,

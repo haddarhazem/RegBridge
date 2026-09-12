@@ -1,8 +1,9 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.db.session import get_session
 from app.modules.ai.copilot import ProjectCopilotService
@@ -11,6 +12,7 @@ from app.modules.ai.schemas import CopilotTurnResponse, ConversationCreate, Conv
 from app.modules.ai.services import ConversationService
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
+from app.core.request_id import get_request_id
 from app.modules.regulatory.orchestration import build_regulatory_orchestrator
 from app.modules.regulatory.retrieval import RegulatoryConfigurationError, RegulatoryRetrievalError
 
@@ -25,13 +27,19 @@ def _message_response(message) -> MessageResponse:
 
 def _conversation_response(thread) -> ConversationResponse:
     messages = [_message_response(message) for message in thread.__dict__.get("messages", [])]
-    return ConversationResponse.model_validate({**thread.__dict__, "messages": messages})
+    return ConversationResponse(
+        id=thread.id, user_id=thread.user_id, title=thread.title,
+        subject_type=thread.subject_type, subject_id=thread.subject_id,
+        status=thread.status, created_at=thread.created_at, updated_at=thread.updated_at,
+        archived_at=thread.archived_at, messages=messages,
+    )
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(data: ConversationCreate, principal: Principal, session: Session) -> ConversationResponse:
     thread = await ConversationService(session).create_thread(principal, title=data.title, subject_type=data.subject_type, subject_id=data.subject_id)
-    thread.messages = []
+    # New threads have no messages. Do not assign an unloaded relationship:
+    # SQLAlchemy would lazy-load it outside an awaited async operation.
     return _conversation_response(thread)
 
 
@@ -52,9 +60,10 @@ async def add_message(thread_id: uuid.UUID, data: MessageCreate, principal: Prin
 
 
 @router.post("/{thread_id}/responses", response_model=CopilotTurnResponse, status_code=status.HTTP_201_CREATED)
-async def create_copilot_response(thread_id: uuid.UUID, data: MessageCreate, principal: Principal, session: Session) -> CopilotTurnResponse:
+async def create_copilot_response(request: Request, thread_id: uuid.UUID, data: MessageCreate, principal: Principal, session: Session) -> CopilotTurnResponse:
     try:
-        orchestrator = build_regulatory_orchestrator(session)
+        # Cold BGE initialization is synchronous; it must not block the ASGI loop.
+        orchestrator = await run_in_threadpool(build_regulatory_orchestrator, session)
     except (RegulatoryConfigurationError, RegulatoryRetrievalError, LLMConfigurationError):
         raise HTTPException(status_code=503, detail="Copilot is not configured") from None
     turn = await ProjectCopilotService(ConversationService(session), orchestrator).respond(
@@ -64,6 +73,7 @@ async def create_copilot_response(thread_id: uuid.UUID, data: MessageCreate, pri
         document_id=data.document_id,
         document_version_id=data.document_version_id,
         analysis_id=data.analysis_id,
+        request_id=get_request_id(request),
     )
     return CopilotTurnResponse(
         conversation_id=thread_id,

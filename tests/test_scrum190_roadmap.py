@@ -15,6 +15,8 @@ from app.modules.regulatory.assessment_models import AssessmentInputSnapshot, Re
 from app.modules.regulatory.roadmap_generation import generate_typed_items
 from app.modules.regulatory.roadmap_models import LaunchRoadmap, LaunchRoadmapItem
 from app.modules.regulatory.roadmap_service import LaunchRoadmapService
+from app.modules.regulatory.roadmap_router import update_roadmap_item
+from app.modules.regulatory.roadmap_contracts import RoadmapItemStatusUpdate
 
 
 @pytest_asyncio.fixture
@@ -97,7 +99,8 @@ async def test_roadmap_history_progress_provenance_and_cross_user_authorization(
             assert roadmap.regulatory_assessment_id == assessment_id
             assert [item.item_type for item in items] == ["obligation", "recommendation", "uncertainty"]
             await service.update_item(owner, project_id, 1, items[0].id, "in_progress")
-            await service.update_item(owner, project_id, 1, items[0].id, "completed")
+            updated = await update_roadmap_item(project_id, 1, items[0].id, RoadmapItemStatusUpdate(status="completed"), owner, session)
+            assert updated.status == "completed" and updated.updated_at is not None
 
         async with roadmap_factory() as session:
             reloaded, reloaded_items = await LaunchRoadmapService(session).get_version(owner, project_id, 1)
@@ -123,6 +126,13 @@ async def test_roadmap_history_progress_provenance_and_cross_user_authorization(
             with pytest.raises(HTTPException) as blocked_assessment_error:
                 await LaunchRoadmapService(session).generate(owner, project_id, blocked_assessment.id)
             assert blocked_assessment_error.value.status_code == 409
+            blocked_assessment.status = 'completed'
+            blocked_assessment.verification_verdict = 'pass'
+            blocked_assessment.result = {'answer':'Prose only', 'obligations':[], 'recommendations':[], 'uncertainties':[]}
+            await session.flush()
+            with pytest.raises(HTTPException, match='structured conclusions') as empty_error:
+                await LaunchRoadmapService(session).generate(owner, project_id, blocked_assessment.id)
+            assert empty_error.value.status_code == 409
             with pytest.raises(HTTPException) as blocked:
                 await LaunchRoadmapService(session).generate(other, project_id, assessment_id)
             assert blocked.value.status_code == 404

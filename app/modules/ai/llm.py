@@ -7,17 +7,21 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 
+LLM_MESSAGE_MAX_CHARS = 12000
+LLM_REQUEST_MAX_MESSAGES = 20
+
+
 class LLMMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role: Literal["system", "user", "assistant"]
-    content: str = Field(min_length=1, max_length=12000)
+    content: str = Field(min_length=1, max_length=LLM_MESSAGE_MAX_CHARS)
 
 
 class LLMGenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    messages: list[LLMMessage] = Field(min_length=1, max_length=20)
+    messages: list[LLMMessage] = Field(min_length=1, max_length=LLM_REQUEST_MAX_MESSAGES)
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_tokens: int = Field(default=900, gt=0, le=4000)
     response_format: dict[str, Any] | None = None

@@ -1,5 +1,7 @@
 from functools import lru_cache
 
+from typing import Literal
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -39,6 +41,17 @@ class Settings(BaseSettings):
     mistral_api_key: SecretStr | None = Field(default=None, alias="MISTRAL_API_KEY", repr=False)
     mistral_model: str | None = Field(default=None, alias="MISTRAL_MODEL")
     mistral_ocr_model: str = Field(default="mistral-ocr-latest", alias="MISTRAL_OCR_MODEL")
+    llm_provider: Literal["mistral", "deepseek", "ollama", "gemini"] = Field(default="mistral", alias="LLM_PROVIDER")
+    deepseek_api_key: SecretStr | None = Field(default=None, alias="DEEPSEEK_API_KEY", repr=False)
+    deepseek_model: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL")
+    deepseek_base_url: str = Field(default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
+    ollama_api_key: SecretStr | None = Field(default=None, alias="OLLAMA_API_KEY", repr=False)
+    ollama_model: str = Field(default="gpt-oss:20b", alias="OLLAMA_MODEL")
+    ollama_base_url: str = Field(default="https://ollama.com/api", alias="OLLAMA_BASE_URL")
+    gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY", repr=False)
+    gemini_model: str = Field(default="gemini-3.8-flash", alias="GEMINI_MODEL")
+    regulatory_generation_max_tokens: int = Field(default=900, ge=1, le=4000, alias="REGULATORY_GENERATION_MAX_TOKENS")
+    regulatory_verification_max_tokens: int = Field(default=900, ge=1, le=4000, alias="REGULATORY_VERIFICATION_MAX_TOKENS")
     document_external_processing_enabled: bool = Field(default=False, alias="DOCUMENT_EXTERNAL_PROCESSING_ENABLED")
     document_native_text_min_chars: int = Field(default=32, alias="DOCUMENT_NATIVE_TEXT_MIN_CHARS", ge=1)
     document_extraction_stale_after_seconds: int = Field(default=900, alias="DOCUMENT_EXTRACTION_STALE_AFTER_SECONDS", gt=0)

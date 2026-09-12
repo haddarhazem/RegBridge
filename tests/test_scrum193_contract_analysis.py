@@ -96,13 +96,14 @@ async def cleanup(factory, project_id, document_id, user_ids):
 
 
 @pytest.mark.asyncio
-async def test_analysis_is_version_bound_evidence_grounded_and_source_immutable(contract_factory):
+async def test_analysis_is_version_bound_evidence_grounded_and_source_immutable(contract_factory, monkeypatch):
     text_v1 = "The customer may terminate this contract on 30 days' notice."
     project_id, document_id, version1_id, owner, other = await create_fixture(contract_factory, text_value=text_v1)
     try:
         provider1 = FakeProvider(lambda _request: output_for(version1_id, text_v1))
+        monkeypatch.setattr('app.modules.documents.contract_analysis_service.get_llm_provider', lambda: provider1)
         async with contract_factory() as session:
-            analysis1 = await ContractAnalysisService(session, provider=provider1).analyze(owner, document_id, version1_id)
+            analysis1 = await ContractAnalysisService(session).analyze(owner, document_id, version1_id)
             assert analysis1.status == "completed"
             assert analysis1.document_version_id == version1_id
             assert analysis1.findings[0].evidence_quote == text_v1

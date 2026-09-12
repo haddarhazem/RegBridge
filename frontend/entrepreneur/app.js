@@ -17,7 +17,7 @@
     onboarding: null, facts: [], assessment: null, assessments: [], roadmap: null,
     documents: [], documentFilter: 'all', members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [], documentPollTimer: null, documentPollAttempts: 0,
     editingFactId: null,
-    copilot: { projectId: null, conversationId: null, messages: [], loading: false, error: '', notice: '', controller: null, context: { documentId: null, versionId: null, analysisId: null } },
+    copilot: { visible: false, mode: 'drawer', unread: false, projectId: null, conversationId: null, messages: [], loading: false, error: '', notice: '', controller: null, context: { documentId: null, versionId: null, analysisId: null } },
   };
 
   function route() {
@@ -59,16 +59,23 @@
   }
 
   function errorMessage(error) {
+    if (error?.name === 'AbortError') return 'La demande a été interrompue.';
     if (error?.status === 401 || error?.code === 'unauthenticated') return 'Votre session a expiré. Reconnectez-vous.';
     if (error?.status === 403) return 'Vous n’avez pas accès à ce contexte.';
-    if (error?.status === 404) return 'Ce projet n’existe pas ou n’est plus accessible.';
+    if (error?.status === 404) return 'Ce projet ou cette ressource n’existe pas ou n’est plus accessible.';
+    if ([400, 422].includes(error?.status)) return 'Les informations envoyées ne sont pas valides. Vérifiez les champs.';
+    if (error?.status === 409) return 'Cette opération est incompatible avec l’état actuel. Actualisez puis réessayez.';
     if (error?.status === 429) return 'Trop de demandes ont été envoyées. Réessayez dans quelques instants.';
-    return error?.message || 'Le service est momentanément indisponible.';
+    if (error?.code === 'request_timeout') return 'Le délai de réponse est dépassé. Réessayez dans quelques instants.';
+    if (error?.code === 'invalid_roadmap_response') return 'Le format de la roadmap reçu est invalide. Réessayez ou contactez le support.';
+    if (error instanceof TypeError) return 'Connexion momentanément indisponible. Vérifiez le serveur et votre connexion.';
+    return 'Le service est momentanément indisponible. Réessayez dans quelques instants.';
   }
 
   function resetCopilotContext(projectId, announce = false) {
     if (state.copilot.controller) state.copilot.controller.abort();
     state.copilot = {
+      visible: state.copilot.visible, mode: state.copilot.mode, unread: false,
       projectId,
       conversationId: null,
       messages: [],
@@ -79,6 +86,9 @@
       context: { documentId: null, versionId: null, analysisId: null },
     };
     renderCopilot();
+    document.querySelector('#copilot-question').value = '';
+    const history = document.querySelector('[data-copilot-history]');
+    if (history) { history.hidden = true; history.innerHTML = ''; }
   }
 
   function copilotSources(message) {
@@ -97,6 +107,19 @@
   }
 
   function renderCopilot() {
+    const copilot = state.copilot;
+    document.body.classList.toggle('copilot-open', copilot.visible);
+    document.body.classList.toggle('copilot-fullscreen', copilot.mode === 'fullscreen');
+    const drawer = document.querySelector('[data-copilot-drawer]');
+    drawer.inert = !copilot.visible;
+    drawer.setAttribute('aria-hidden', String(!copilot.visible));
+    const expand = document.querySelector('[data-expand-copilot]');
+    expand.setAttribute('aria-pressed', String(copilot.mode === 'fullscreen'));
+    expand.setAttribute('aria-label', copilot.mode === 'fullscreen' ? 'Réduire le copilote' : 'Agrandir le copilote');
+    expand.textContent = copilot.mode === 'fullscreen' ? '−' : '⛶';
+    document.querySelector('[data-open-copilot]').setAttribute('aria-label', copilot.unread ? 'Copilote : réponse disponible' : copilot.loading ? 'Copilote : réponse en cours' : 'Ouvrir le copilote');
+    document.querySelector('[data-open-copilot]').classList.toggle('has-unread', copilot.unread);
+    document.querySelectorAll('[data-new-copilot], [data-show-copilot-history], [data-copilot-history]').forEach((control) => { control.disabled = copilot.loading; });
     const messages = document.querySelector('[data-copilot-messages]');
     if (!messages) return;
     const notice = document.querySelector('[data-copilot-notice]');
@@ -109,6 +132,11 @@
     error.hidden = !state.copilot.error;
     error.textContent = state.copilot.error;
     generating.hidden = !state.copilot.loading;
+    const confirmed = state.project?.confirmed_fields || [];
+    const fields = [['activity', 'Activité', 'activity'], ['sector', 'Secteur', 'sector'], ['technology', 'Technologie', 'technology'], ['data', 'Données', 'data'], ['market', 'Marché', 'target_market'], ['location', 'Localisation', 'location']];
+    const available = fields.filter(([key, , property]) => confirmed.includes(key) && state.project[property]);
+    document.querySelector('[data-copilot-context-count]').textContent = `${available.length}/6 informations déclarées confirmées`;
+    document.querySelector('[data-copilot-context-details]').innerHTML = available.map(([, label, property]) => `<dt>${label}</dt><dd>${views.escape(state.project[property])}</dd>`).join('');
     submit.disabled = state.copilot.loading || !state.project;
     const suggestions = state.project ? [
       'Quelles obligations réglementaires principales concernent ce projet ?',
@@ -128,65 +156,102 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
-  async function ensureCopilotConversation() {
-    if (!state.project) return;
-    if (state.copilot.projectId === state.project.id && state.copilot.conversationId) return;
-    state.copilot.loading = true;
-    state.copilot.error = '';
-    renderCopilot();
-    try {
-      const conversations = await api.conversations();
-      let conversation = conversations.find((item) => item.subject_type === 'project' && item.subject_id === state.project.id);
-      if (!conversation) conversation = await api.createConversation(state.project.id, `Copilote — ${state.project.display_name || 'Projet'}`);
-      conversation = await api.conversation(conversation.id);
-      state.copilot.projectId = state.project.id;
-      state.copilot.conversationId = conversation.id;
-      state.copilot.messages = conversation.messages || [];
-    } catch (error) {
-      state.copilot.error = errorMessage(error);
-    } finally {
-      state.copilot.loading = false;
-      renderCopilot();
-    }
+  // Each operation owns one captured state object and controller. Late completions
+  // cannot update a new turn, project, or session even if abort is ignored upstream.
+  function ownsCopilot(copilot, controller) {
+    return state.copilot === copilot && copilot.controller === controller && !controller.signal.aborted;
+  }
+
+  async function ensureCopilotConversation(copilot, controller) {
+    if (copilot.conversationId) return;
+    const conversation = await api.createConversation(copilot.projectId, 'Copilote — Projet', controller.signal, 15000);
+    if (ownsCopilot(copilot, controller)) copilot.conversationId = conversation.id;
   }
 
   async function submitCopilot(form) {
     const input = form.elements.content;
     const content = input.value.trim();
     if (!content || state.copilot.loading || !state.project) return;
-    await ensureCopilotConversation();
-    if (!state.copilot.conversationId) return;
+    const copilot = state.copilot;
+    const requestContext = { ...copilot.context };
     const controller = new AbortController();
-    state.copilot.controller = controller;
-    state.copilot.loading = true;
-    state.copilot.error = '';
-    state.copilot.messages.push({ role: 'user', content });
+    copilot.controller = controller;
+    copilot.loading = true;
+    copilot.error = '';
+    copilot.notice = '';
+    copilot.messages.push({ role: 'user', content });
     input.value = '';
     renderCopilot();
-    let timedOut = false;
-    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 60000);
+    const timeout = window.setTimeout(() => {
+      if (ownsCopilot(copilot, controller)) {
+        cancelCopilot();
+        state.copilot.error = 'Le délai de réponse est dépassé. Vous pouvez réessayer.';
+        renderCopilot();
+      }
+    }, 180000);
     try {
-      await api.askCopilot(state.copilot.conversationId, content, controller.signal, {
-        document_id: state.copilot.context.documentId,
-        document_version_id: state.copilot.context.versionId,
-        analysis_id: state.copilot.context.analysisId,
+      await ensureCopilotConversation(copilot, controller);
+      if (!ownsCopilot(copilot, controller)) return;
+      const turn = await api.askCopilot(copilot.conversationId, content, controller.signal, {
+        document_id: requestContext.documentId,
+        document_version_id: requestContext.versionId,
+        analysis_id: requestContext.analysisId,
       });
-      const conversation = await api.conversation(state.copilot.conversationId);
-      state.copilot.messages = conversation.messages || [];
+      if (!ownsCopilot(copilot, controller)) return;
+      // The response already contains the persisted messages; no unbounded second fetch.
+      if (!turn.user_message?.id || !turn.assistant_message?.id) throw new Error('Réponse du Copilote invalide.');
+      copilot.messages = [...copilot.messages.filter((message) => message.id), turn.user_message, turn.assistant_message];
+      copilot.unread = !copilot.visible;
     } catch (error) {
-      state.copilot.messages = state.copilot.messages.filter((message) => message.created_at);
-      if (error.name === 'AbortError') state.copilot.error = timedOut ? 'Le Copilote met plus de temps que prévu. Réessayez.' : 'La demande a été arrêtée.';
-      else if (error?.status === 401 || error?.code === 'unauthenticated') {
-        const intended = `${window.location.pathname}${window.location.search}`;
-        window.location.replace(`/auth/login/?returnTo=${encodeURIComponent(intended)}`);
-        return;
-      } else state.copilot.error = errorMessage(error);
+      if (!ownsCopilot(copilot, controller)) return;
+      copilot.messages = copilot.messages.filter((message) => message.id);
+      copilot.error = errorMessage(error);
     } finally {
       window.clearTimeout(timeout);
-      state.copilot.loading = false;
-      state.copilot.controller = null;
-      renderCopilot();
-      input.focus();
+      if (ownsCopilot(copilot, controller)) {
+        copilot.loading = false;
+        copilot.controller = null;
+        renderCopilot();
+        if (copilot.visible) input.focus();
+      }
+    }
+  }
+
+  async function loadCopilotHistory(conversationId = null) {
+    if (state.copilot.loading) return;
+    const copilot = state.copilot;
+    const controller = new AbortController();
+    copilot.controller = controller;
+    copilot.loading = true;
+    copilot.error = '';
+    renderCopilot();
+    try {
+      if (conversationId) {
+        const conversation = await api.conversation(conversationId, controller.signal, 15000);
+        if (!ownsCopilot(copilot, controller)) return;
+        if (conversation.subject_type !== 'project' || conversation.subject_id !== copilot.projectId || !Array.isArray(conversation.messages)) {
+          throw new Error('Cette conversation ne correspond pas au projet actif.');
+        }
+        copilot.conversationId = conversation.id;
+        copilot.messages = conversation.messages;
+      } else {
+        const conversations = await api.conversations(controller.signal, 15000);
+        if (!ownsCopilot(copilot, controller)) return;
+        const select = document.querySelector('[data-copilot-history]');
+        const matching = conversations.filter((item) => item.subject_type === 'project' && item.subject_id === copilot.projectId);
+        select.innerHTML = '<option value="">Choisir une conversation</option>' + matching.map((item) =>
+          `<option value="${views.escape(item.id)}">${views.escape(item.title || 'Conversation')} · ${views.date(item.updated_at)}</option>`).join('');
+        select.hidden = false;
+        copilot.notice = matching.length ? 'Sélectionnez une conversation pour la reprendre.' : 'Aucune conversation enregistrée pour ce projet.';
+      }
+    } catch (error) {
+      if (ownsCopilot(copilot, controller)) copilot.error = errorMessage(error);
+    } finally {
+      if (ownsCopilot(copilot, controller)) {
+        copilot.loading = false;
+        copilot.controller = null;
+        renderCopilot();
+      }
     }
   }
 
@@ -210,7 +275,10 @@
   }
 
   async function safe(call, fallback = null) {
-    try { return await call(); } catch { return fallback; }
+    try { return await call(); } catch (error) {
+      if (error?.status === 404) return fallback;
+      throw error;
+    }
   }
 
   async function loadDocuments(projectId) {
@@ -278,7 +346,7 @@
     }
     const id = state.project.id;
     const [onboarding, facts, assessment, roadmap, documents] = await Promise.all([
-      safe(() => api.getOnboarding(id)), safe(() => api.facts(id), []), safe(() => api.latestAssessment(id)), safe(() => api.latestRoadmap(id)), safe(() => loadDocuments(id), []),
+      state.project.project_type === 'idea' ? safe(() => api.getOnboarding(id)) : Promise.resolve(null), safe(() => api.facts(id), []), safe(() => api.latestAssessment(id)), safe(() => api.latestRoadmap(id)), safe(() => loadDocuments(id), []),
     ]);
     Object.assign(state, { onboarding, facts, assessment, roadmap, documents });
   }
@@ -304,7 +372,13 @@
       state.assessments = await safe(() => api.assessments(state.project.id), []);
       if (routeState.version) state.assessment = await safe(() => api.assessment(state.project.id, routeState.version), state.assessment);
       workspace.innerHTML = views.regulatory(state);
-    } else if (state.view === 'roadmap') workspace.innerHTML = views.roadmap(state);
+    } else if (state.view === 'roadmap') {
+      const roadmaps = await api.roadmaps(state.project.id);
+      if (routeState.version) state.roadmap = await api.roadmap(state.project.id, routeState.version);
+      const assessments = state.roadmap ? await api.assessments(state.project.id) : [];
+      const roadmapAssessment = assessments.find((item) => item.id === state.roadmap?.regulatory_assessment_id);
+      workspace.innerHTML = views.roadmap({ ...state, roadmaps, roadmapAssessment });
+    }
     else if (state.view === 'documents') {
       state.documents = await loadDocuments(state.project.id);
       workspace.innerHTML = views.documents({ ...state, selectedDocumentId: routeState.document, selectedVersionId: routeState.version });
@@ -324,8 +398,10 @@
       }
       if (state.project.project_type !== 'idea') {
         try { state.controls = await api.controls(state.project.id); } catch (error) { complianceError = errorMessage(error); }
-        state.score = await safe(() => api.latestScore(state.project.id, state.activeFrameworkVersionId));
         state.scoreHistory = await safe(() => api.scoreHistory(state.project.id, state.activeFrameworkVersionId), []);
+        // History already provides the immutable calculations in chronological
+        // order; an empty history is normal, not a failing latest-score request.
+        state.score = state.scoreHistory.at(-1) || null;
         state.selectedControlEvidence = state.selectedControlId ? await safe(() => api.controlEvidence(state.project.id, state.selectedControlId), []) : [];
       }
       workspace.innerHTML = views.compliance({ ...state, error: complianceError });
@@ -351,7 +427,7 @@
       await renderView(current);
       renderShell();
       if (['documents', 'contracts'].includes(current.view)) scheduleDocumentPolling();
-      workspace.focus({ preventScroll: true });
+      if (!state.copilot.visible) workspace.focus({ preventScroll: true });
     } catch (error) {
       workspace.innerHTML = views.inlineError(errorMessage(error));
     } finally {
@@ -371,7 +447,7 @@
     if (!name) return;
     if (name === 'retry') return loadRoute();
     if (name === 'create-project') return navigate('create', { projectId: null });
-    if (name === 'profile-logout') return runtime.logout();
+    if (name === 'profile-logout') return logout();
     if (name === 'open-project') return navigate('project');
     if (name === 'open-onboarding') return navigate('onboarding');
     if (name === 'open-facts') return navigate('facts');
@@ -391,6 +467,7 @@
     if (name === 'revoke-evidence') return perform(target, 'Revocation...', () => api.revokeEvidence(state.project.id, target.dataset.evidenceId), loadRoute);
     if (name === 'project-tab') return navigate('project', { tab: target.dataset.tab });
     if (name === 'select-assessment') return navigate('regulatory', { version: target.dataset.version });
+    if (name === 'select-roadmap') return navigate('roadmap', { version: target.dataset.version });
     if (name === 'filter-roadmap') {
       document.querySelectorAll('[data-action="filter-roadmap"]').forEach((item) => item.classList.toggle('active', item === target));
       document.querySelectorAll('[data-roadmap-status]').forEach((item) => { item.hidden = target.dataset.filter !== 'all' && item.dataset.roadmapStatus !== target.dataset.filter; });
@@ -424,6 +501,7 @@
     }
     if (name === 'generate-roadmap') {
       if (!state.assessment) return navigate('regulatory');
+      if (state.assessment.status !== 'completed' || state.assessment.verification_verdict === 'block') return showToast('Une évaluation terminée et non bloquée est nécessaire. Ouvrez Réglementation.');
       return perform(target, 'Génération…', () => api.generateRoadmap(state.project.id, state.assessment.id), () => navigate('roadmap'));
     }
     if (name === 'complete-roadmap-item') return perform(target, 'Mise à jour…', () => api.updateRoadmapItem(state.project.id, state.roadmap.version, target.dataset.itemId, 'completed'), loadRoute);
@@ -585,13 +663,38 @@
   function closeSidebar() { document.body.classList.remove('sidebar-open'); document.querySelector('[data-open-sidebar]').setAttribute('aria-expanded', 'false'); }
   async function openCopilot() {
     if (!state.project) return;
+    state.copilot.visible = true;
+    state.copilot.unread = false;
     document.body.classList.add('copilot-open');
     document.querySelector('[data-copilot-drawer]').setAttribute('aria-hidden', 'false');
     document.querySelector('[data-close-copilot]').focus();
-    await ensureCopilotConversation();
+    renderCopilot();
     document.querySelector('#copilot-question')?.focus();
   }
-  function closeCopilot() { document.body.classList.remove('copilot-open'); document.querySelector('[data-copilot-drawer]').setAttribute('aria-hidden', 'true'); }
+  function closeCopilot() {
+    state.copilot.visible = false;
+    renderCopilot();
+    document.querySelector('[data-open-copilot]').focus();
+  }
+  function toggleCopilotMode() {
+    state.copilot.mode = state.copilot.mode === 'fullscreen' ? 'drawer' : 'fullscreen';
+    renderCopilot();
+    document.querySelector('[data-expand-copilot]').focus();
+  }
+  function cancelCopilot() {
+    const controller = state.copilot.controller;
+    if (!controller) return;
+    controller.abort();
+    state.copilot.loading = false;
+    state.copilot.controller = null;
+    state.copilot.messages = state.copilot.messages.filter((message) => message.id);
+    // A disconnected HTTP request may still finish server-side. A new thread
+    // prevents its result leaking into the next active exchange; history is kept.
+    state.copilot.conversationId = null;
+    state.copilot.error = '';
+    state.copilot.notice = 'L’attente a été arrêtée. Un traitement déjà commencé peut encore se terminer côté serveur.';
+    renderCopilot();
+  }
 
   document.addEventListener('click', (event) => {
     const suggested = event.target.closest('[data-copilot-question]');
@@ -609,20 +712,44 @@
   document.addEventListener('change', async (event) => {
     if (event.target.matches('[data-project-select]')) { store.setActiveProject(event.target.value); navigate('dashboard', { projectId: event.target.value }); }
     if (event.target.matches('[data-compliance-framework]')) { state.activeFrameworkVersionId = event.target.value || null; state.selectedControlId = null; state.selectedControlEvidence = []; await loadRoute(); }
-    if (event.target.matches('[data-roadmap-item]')) await perform(event.target, 'Mise à jour…', () => api.updateRoadmapItem(state.project.id, state.roadmap.version, event.target.dataset.roadmapItem, event.target.value), loadRoute);
+    if (event.target.matches('[data-roadmap-item]')) {
+      const select = event.target;
+      const previous = state.roadmap.items.find((item) => item.id === select.dataset.roadmapItem)?.status;
+      try { setBusy(select, true); await api.updateRoadmapItem(state.project.id, state.roadmap.version, select.dataset.roadmapItem, select.value); await loadRoute(); }
+      catch (error) { select.value = previous; setBusy(select, false); showToast(errorMessage(error)); }
+    }
   });
   document.querySelector('[data-open-sidebar]').addEventListener('click', openSidebar);
   document.querySelector('[data-close-sidebar]').addEventListener('click', closeSidebar);
   document.querySelector('[data-sidebar-scrim]').addEventListener('click', closeSidebar);
   document.querySelector('[data-open-copilot]').addEventListener('click', openCopilot);
   document.querySelector('[data-close-copilot]').addEventListener('click', closeCopilot);
-  document.querySelector('[data-cancel-copilot]').addEventListener('click', () => state.copilot.controller?.abort());
+  document.querySelector('[data-expand-copilot]').addEventListener('click', toggleCopilotMode);
+  document.querySelector('[data-cancel-copilot]').addEventListener('click', cancelCopilot);
   document.querySelector('[data-copilot-form]').addEventListener('submit', (event) => { event.preventDefault(); submitCopilot(event.currentTarget); });
   document.querySelector('[data-drawer-scrim]').addEventListener('click', closeCopilot);
-  document.querySelector('[data-logout]').addEventListener('click', () => runtime.logout());
+  async function logout() {
+    resetCopilotContext(null);
+    closeCopilot();
+    workspace.innerHTML = '';
+    await runtime.logout();
+  }
+  document.querySelector('[data-logout]').addEventListener('click', logout);
+  document.querySelector('[data-new-copilot]').addEventListener('click', () => resetCopilotContext(state.project?.id || null));
+  document.querySelector('[data-show-copilot-history]').addEventListener('click', () => loadCopilotHistory());
+  document.querySelector('[data-copilot-history]').addEventListener('change', (event) => { if (event.target.value) loadCopilotHistory(event.target.value); });
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab' && state.copilot.visible) {
+      const controls = [...document.querySelector('[data-copilot-drawer]').querySelectorAll('button, select, textarea, a[href], summary')].filter((node) => !node.disabled && node.getClientRects().length);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
     if (event.key !== 'Escape') return;
-    if (document.body.classList.contains('copilot-open')) { closeCopilot(); document.querySelector('[data-open-copilot]').focus(); }
+    if (state.copilot.visible) {
+      if (state.copilot.mode === 'fullscreen') toggleCopilotMode();
+      else closeCopilot();
+    }
     else if (document.body.classList.contains('sidebar-open')) { closeSidebar(); document.querySelector('[data-open-sidebar]').focus(); }
   });
   window.addEventListener('popstate', loadRoute);

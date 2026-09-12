@@ -39,6 +39,7 @@ class ProjectContextRepository:
                 Project.data_context,
                 Project.target_market,
                 Project.location,
+                Project.confirmed_fields,
             ).where(Project.id == project_id)
         )
         values = row.one_or_none()
@@ -49,17 +50,30 @@ class ProjectContextRepository:
             .where(ProjectFact.project_id == project_id, ProjectFact.status.in_(["confirmed", "corrected"]))
             .order_by(ProjectFact.created_at, ProjectFact.id)
         )
+        fact_rows = list(facts.all())
+        confirmed = values.confirmed_fields or {}
+        confirmed_fact_values = {
+            {"data": "data_context", "market": "target_market"}.get(row.domain, row.domain): row.value
+            for row in fact_rows
+            if row.status in {"confirmed", "corrected"}
+        }
+
+        def confirmed_value(field: str, value):
+            if confirmed.get(field) == "confirmed":
+                return value
+            return confirmed_fact_values.get(field)
+
         return ProjectContextProjection(
             project_type=values.project_type,
             country_code=values.country_code,
             user_goal=values.user_goal,
-            activity=values.activity,
-            sector=values.sector,
-            technology=values.technology,
-            data_context=values.data_context,
-            target_market=values.target_market,
-            location=values.location,
-            facts=tuple(ProjectFactProjection(domain=row.domain, value=row.value, origin=row.origin, status=row.status, provenance=row.provenance, uncertainty=row.uncertainty) for row in facts),
+            activity=confirmed_value("activity", values.activity),
+            sector=confirmed_value("sector", values.sector),
+            technology=confirmed_value("technology", values.technology),
+            data_context=confirmed_value("data", values.data_context),
+            target_market=confirmed_value("market", values.target_market),
+            location=confirmed_value("location", values.location),
+            facts=tuple(ProjectFactProjection(domain=row.domain, value=row.value, origin=row.origin, status=row.status, provenance=row.provenance, uncertainty=row.uncertainty) for row in fact_rows),
         )
 
     async def load_latest_assessment_projection(self, project_id: uuid.UUID) -> AssessmentProjection | None:
