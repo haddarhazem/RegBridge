@@ -54,11 +54,15 @@
         <span class="sr-only" id="copilot-availability" data-copilot-availability>Un projet actif est nécessaire.</span>
       </footer>
     </div>
-    <div class="drawer-scrim" data-drawer-scrim></div>
-    <aside class="copilot-drawer" data-copilot-drawer role="dialog" aria-modal="true" aria-labelledby="copilot-title" aria-hidden="true" inert>
+    <aside class="copilot-drawer" data-copilot-drawer role="complementary" aria-labelledby="copilot-title" aria-hidden="true" inert>
       <header>
-        <div><p class="eyebrow">CONTEXTE PROJET</p><h2 id="copilot-title">Copilote RegBridge</h2></div>
-        <div class="copilot-window-controls"><button class="icon-button" type="button" data-expand-copilot aria-label="Agrandir le copilote" aria-pressed="false">⛶</button><button class="icon-button" type="button" data-close-copilot aria-label="Masquer le copilote sans arrêter la réponse">×</button></div>
+        <div><p class="eyebrow">CONTEXTE PROJET</p><h2 id="copilot-title">RegBridge Copilot</h2></div>
+        <div class="copilot-window-controls">
+          <button type="button" data-new-copilot>Nouvelle conversation</button>
+          <button type="button" data-show-copilot-history>Historique</button>
+          <button class="icon-button" type="button" data-expand-copilot aria-label="Agrandir le copilote" aria-pressed="false" title="Agrandir">⛶</button>
+          <button class="icon-button" type="button" data-close-copilot aria-label="Masquer le copilote sans arrêter la réponse" title="Fermer">×</button>
+        </div>
       </header>
       <div class="copilot-content">
         <section class="copilot-context" aria-label="Contexte actif">
@@ -71,13 +75,15 @@
         <div class="copilot-notice" data-copilot-notice role="status" hidden></div>
         <div class="copilot-quick-actions" data-copilot-quick-actions aria-label="Questions suggérées"></div>
         <div class="copilot-messages" data-copilot-messages aria-live="polite"></div>
-        <div class="copilot-history">
-          <button type="button" data-new-copilot>Nouvelle conversation</button>
-          <button type="button" data-show-copilot-history>Historique</button>
-          <select data-copilot-history aria-label="Conversation à reprendre" hidden></select>
-        </div>
+        <section class="copilot-history" data-copilot-history aria-label="Historique des conversations du projet" hidden></section>
         <div class="copilot-error" data-copilot-error role="alert" hidden></div>
-        <div class="copilot-generating" data-copilot-generating role="status" hidden><span class="rb-spinner" aria-hidden="true"></span><span>RegBridge analyse le contexte autorisé…</span><button type="button" data-cancel-copilot>Arrêter</button></div>
+        <div class="copilot-generating" data-copilot-generating role="status" hidden>
+          <span class="rb-spinner" aria-hidden="true"></span>
+          <span class="sr-only">RegBridge analyse le contexte autorisé…</span>
+          <div><strong data-copilot-stage-label>Préparation du contexte</strong><ol class="copilot-progress" data-copilot-progress></ol></div>
+          <button type="button" data-cancel-copilot>Arrêter</button>
+        </div>
+        <details class="copilot-diagnostics" data-copilot-diagnostics hidden><summary>Diagnostic</summary><dl data-copilot-diagnostics-content></dl></details>
         <form class="copilot-form" data-copilot-form>
           <label class="sr-only" for="copilot-question">Posez une question sur votre projet</label>
           <textarea id="copilot-question" name="content" rows="3" maxlength="4000" placeholder="Posez une question sur votre projet…" required></textarea>

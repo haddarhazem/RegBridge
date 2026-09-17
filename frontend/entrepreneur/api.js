@@ -36,7 +36,7 @@
     latestRoadmap: (projectId) => roadmapRequest(`/projects/${projectId}/roadmaps/latest`),
     roadmaps: (projectId) => request(`/projects/${projectId}/roadmaps`),
     roadmap: (projectId, version) => roadmapRequest(`/projects/${projectId}/roadmaps/${version}`),
-    generateRoadmap: (projectId, assessmentId) => roadmapRequest(`/projects/${projectId}/roadmaps`, json('POST', { regulatory_assessment_id: assessmentId })),
+    generateRoadmap: (projectId) => roadmapRequest(`/projects/${projectId}/roadmaps`, json('POST', {})),
     updateRoadmapItem: (projectId, version, itemId, status) => request(`/projects/${projectId}/roadmaps/${version}/items/${itemId}`, json('PATCH', { status })),
     uploadDocument: (projectId, file, options = {}) => {
       const form = new FormData();
@@ -74,9 +74,10 @@
     calculateScore: (projectId, frameworkVersionId = null) => request(`/projects/${projectId}/compliance/scores`, json('POST', { framework_version_id: frameworkVersionId })),
     latestScore: (projectId, frameworkVersionId = null) => request(`/projects/${projectId}/compliance/scores/latest${frameworkVersionId ? `?framework_version_id=${encodeURIComponent(frameworkVersionId)}` : ''}`),
     scoreHistory: (projectId, frameworkVersionId = null) => request(`/projects/${projectId}/compliance/scores/history${frameworkVersionId ? `?framework_version_id=${encodeURIComponent(frameworkVersionId)}` : ''}`),
-    conversations: (signal, timeoutMs) => request('/conversations', { signal, timeoutMs }),
+    conversations: (projectId, signal, timeoutMs) => request(`/conversations?subject_type=project&subject_id=${encodeURIComponent(projectId)}`, { signal, timeoutMs }),
     conversation: (conversationId, signal, timeoutMs) => request(`/conversations/${conversationId}`, { signal, timeoutMs }),
     createConversation: (projectId, title, signal, timeoutMs) => request('/conversations', { ...json('POST', { title, subject_type: 'project', subject_id: projectId }), signal, timeoutMs }),
-    askCopilot: (conversationId, content, signal, context = {}) => request(`/conversations/${conversationId}/responses`, { ...json('POST', { content, ...context }), signal, timeoutMs: 180000 }),
+    askCopilot: (conversationId, content, signal, context = {}, requestId) => request(`/conversations/${conversationId}/responses`, { ...json('POST', { content, ...context }), signal, timeoutMs: 180000, requestId }),
+    copilotStatus: (conversationId, requestId, signal) => request(`/conversations/${conversationId}/requests/${encodeURIComponent(requestId)}/status`, { signal, timeoutMs: 15000, requestId }),
   });
 })();

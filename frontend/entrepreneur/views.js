@@ -58,10 +58,13 @@
     const confirmedFacts = facts.filter((fact) => ['confirmed', 'corrected'].includes(fact.status)).length;
     const nextAction = next
       ? `<article class="surface primary-task"><div class="card-kicker"><span>PROCHAINE ACTION</span>${badge(next.item_type, next.item_type)}</div><h2>${escape(next.title)}</h2><p>${escape(next.justification)}</p><div class="card-actions">${button('Voir le détail', 'open-roadmap', 'secondary')}${next.status !== 'completed' ? button('Marquer comme terminé', 'complete-roadmap-item', 'primary', `data-item-id="${escape(next.id)}"`) : ''}</div></article>`
-      : `<article class="surface primary-task"><div class="card-kicker"><span>PROCHAINE ACTION</span></div><h2>${roadmap ? 'Toutes les étapes actives sont traitées.' : 'Construisez votre parcours de lancement.'}</h2><p>${roadmap ? 'Consultez la roadmap pour vérifier les éléments ignorés ou terminés.' : 'Générez d’abord une évaluation réglementaire, puis votre roadmap.'}</p><div class="card-actions">${button(assessment ? 'Ouvrir la roadmap' : 'Ouvrir la réglementation', assessment ? 'open-roadmap' : 'open-regulatory')}</div></article>`;
-    return `${pageHeader(lifecycle[project.project_type] || project.project_type, project.display_name || 'Projet sans nom', project.raw_description || 'Description non renseignée.', `${button(onboarding?.status === 'complete' ? 'Voir mon projet' : 'Continuer mon projet', onboarding?.status === 'complete' ? 'open-project' : 'open-onboarding')}${button('Voir la roadmap', 'open-roadmap', 'secondary')}`)}
+      : `<article class="surface primary-task"><div class="card-kicker"><span>PROCHAINE ACTION</span></div><h2>${roadmap ? 'Toutes les étapes actives sont traitées.' : 'Construisez votre parcours de lancement.'}</h2><p>${roadmap ? 'Consultez la roadmap pour vérifier les éléments ignorés ou terminés.' : 'Générez une checklist à partir des informations confirmées de votre projet.'}</p><div class="card-actions">${button('Ouvrir la roadmap', 'open-roadmap')}</div></article>`;
+    const projectAction = project.project_type === 'idea' && onboarding?.status !== 'complete'
+      ? button('Continuer mon projet', 'open-onboarding')
+      : button('Voir mon projet', 'open-project');
+    return `${pageHeader(lifecycle[project.project_type] || project.project_type, project.display_name || 'Projet sans nom', project.raw_description || 'Description non renseignée.', `${projectAction}${button('Voir la roadmap', 'open-roadmap', 'secondary')}`)}
       <section class="dashboard-grid">
-        <article class="surface launch-progress"><div class="card-kicker"><span>PROGRESSION DU LANCEMENT</span></div>${stats.total ? `<strong>${stats.complete} / ${stats.total} étapes terminées</strong><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${stats.total}" aria-valuenow="${stats.complete}"><span style="width:${stats.percent}%"></span></div><small>${next ? `Prochaine : ${escape(next.title)}` : 'Aucune prochaine étape active'}</small>` : `<strong>Roadmap non générée</strong><p>Une évaluation réglementaire est nécessaire avant la génération.</p>`}</article>
+        <article class="surface launch-progress"><div class="card-kicker"><span>PROGRESSION DU LANCEMENT</span></div>${stats.total ? `<strong>${stats.complete} / ${stats.total} étapes terminées</strong><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${stats.total}" aria-valuenow="${stats.complete}"><span style="width:${stats.percent}%"></span></div><small>${next ? `Prochaine : ${escape(next.title)}` : 'Aucune prochaine étape active'}</small>` : `<strong>Roadmap non générée</strong><p>Confirmez les informations du projet pour préparer votre checklist de lancement.</p>`}</article>
         ${nextAction}
       </section>
       <section class="secondary-grid" aria-label="État du projet">
@@ -118,14 +121,19 @@
       ...active.filter((fact) => fact.origin === 'user_declared'),
     ];
     const inferred = active.filter((fact) => fact.origin === 'inferred');
-    if (!declared.length && !inferred.length) return emptyState('Aucune information à vérifier', 'Demandez à RegBridge d’identifier les informations utiles à partir de vos réponses.', button('Identifier les informations', 'infer-facts'));
+    const canInfer = project.project_type === 'idea';
+    if (!declared.length && !inferred.length) return emptyState(
+      'Aucune information à vérifier',
+      canInfer ? 'Demandez à RegBridge d’identifier les informations utiles à partir de vos réponses.' : 'Aucune information déduite n’est disponible pour cette étape du projet.',
+      canInfer ? button('Identifier les informations', 'infer-facts') : '',
+    );
     const cards = (items, inferredGroup) => items.length ? `<div class="fact-list">${items.map((fact) => {
       const editing = inferredGroup && editingFactId === fact.id;
       const editor = editing ? `<form class="fact-editor" data-form="correct-fact" data-fact-id="${escape(fact.id)}"><label>Valeur corrigée<input name="value" value="${escape(fact.value)}" maxlength="2000" required></label><div class="form-error" data-form-error role="alert" hidden></div><div class="card-actions">${button('Enregistrer', 'submit-fact-correction')}${button('Annuler', 'cancel-fact-correction', 'text')}</div></form>` : '';
       const actions = inferredGroup && fact.status === 'pending_confirmation' && !editing ? `<div class="card-actions">${button('Confirmer', 'confirm-fact', 'primary', `data-fact-id="${escape(fact.id)}"`)}${button('Corriger', 'correct-fact', 'secondary', `data-fact-id="${escape(fact.id)}"`)}${button('Rejeter', 'reject-fact', 'text', `data-fact-id="${escape(fact.id)}"`)}</div>` : '';
       return `<article class="surface fact-card"><div class="card-kicker"><span>${escape(factDomains[fact.domain] || fact.domain)}</span>${badge(fact.status === 'pending_confirmation' ? 'À confirmer' : fact.status, fact.status)}</div><h3>${escape(fact.value)}</h3><dl><div><dt>Source</dt><dd>${escape(fact.provenance?.source_field || 'Information confirmée')}</dd></div>${fact.provenance?.excerpt ? `<div><dt>Extrait</dt><dd>“${escape(fact.provenance.excerpt)}”</dd></div>` : ''}${fact.uncertainty ? `<div><dt>Incertitude</dt><dd>${escape(fact.uncertainty)}</dd></div>` : ''}</dl>${editor}${actions}</article>`;
     }).join('')}</div>` : `<p class="quiet-empty">Aucun fait dans cette catégorie.</p>`;
-    return `<section class="section-block"><div class="section-heading"><h2>Déclaré par vous</h2></div>${cards(declared, false)}</section><section class="section-block"><div class="section-heading"><h2>Déduit à partir de vos réponses</h2>${button('Actualiser les informations', 'infer-facts', 'secondary')}</div>${cards(inferred, true)}</section>`;
+    return `<section class="section-block"><div class="section-heading"><h2>Déclaré par vous</h2></div>${cards(declared, false)}</section><section class="section-block"><div class="section-heading"><h2>Déduit à partir de vos réponses</h2>${canInfer ? button('Actualiser les informations', 'infer-facts', 'secondary') : ''}</div>${cards(inferred, true)}</section>`;
   }
 
   function project({ project, facts, history, editingFactId, tab = 'overview' }) {
@@ -165,7 +173,7 @@
     return `${pageHeader('ÉVALUATION RÉGLEMENTAIRE', `Version ${assessment.version}`, `${date(assessment.created_at)} · ${status}`, actions)}${gate}
       <nav class="version-strip" aria-label="Versions de l’évaluation">${versions.map((item) => `<button class="${item.version === assessment.version ? 'active' : ''}" aria-current="${item.version === assessment.version ? 'true' : 'false'}" data-action="select-assessment" data-version="${item.version}">v${item.version}${item.version === latest ? ' · dernière' : ''}</button>`).join('')}</nav>
       <p class="trace-copy">Instantané immuable des informations confirmées à la date de cette version. Une nouvelle évaluation ne remplace pas l’historique. Il ne s’agit pas d’une certification.</p>
-      ${assessment.status !== 'completed' || assessment.verification_verdict === 'block' ? '<p class="workflow-notice" role="status">Cette évaluation n’est pas utilisable pour générer une roadmap. Consultez les incertitudes ou lancez explicitement une nouvelle version.</p>' : button('Continuer vers la roadmap', 'open-roadmap', 'secondary')}
+      ${assessment.status !== 'completed' || assessment.verification_verdict === 'block' ? '<p class="workflow-notice" role="status">Cette évaluation ne peut pas enrichir la roadmap. La checklist de lancement reste disponible à partir des informations confirmées du projet.</p>' : button('Continuer vers la roadmap', 'open-roadmap', 'secondary')}
       ${assessment.result.answer ? `<section class="surface assessment-summary"><p>${escape(assessment.result.answer)}</p></section>` : ''}
       ${conclusions('Obligations identifiées', assessment.result.obligations || [], 'obligation')}
       ${conclusions('Actions recommandées', assessment.result.recommendations || [], 'recommendation')}
@@ -173,18 +181,21 @@
       <section class="section-block sources"><h2>Sources</h2>${sourceLabels(assessment.result.sources)}<small>Les références publiques exposées par cette évaluation sont présentées sans inventer de lien ou de document.</small></section>`;
   }
 
-  function roadmap({ roadmap, assessment, roadmaps = [], roadmapAssessment }) {
+  function roadmap({ roadmap, assessment, latestAssessment, roadmaps = [], roadmapAssessment }) {
     const hasConclusions = ['obligations', 'recommendations', 'uncertainties'].some((key) => assessment?.result?.[key]?.length);
     const verified = assessment?.status === 'completed' && assessment.verification_verdict !== 'block';
     const eligible = verified && hasConclusions;
     const missing = !assessment ? 'Une évaluation réglementaire est nécessaire.' : !verified ? 'La dernière évaluation doit être terminée et non bloquée par la vérification.' : !hasConclusions ? 'Cette évaluation ne contient aucune conclusion structurée. Générez une nouvelle évaluation dans Réglementation.' : '';
+    const priorVerified = assessment && latestAssessment && assessment.id !== latestAssessment.id
+      ? `<p class="workflow-notice" role="status">La dernière évaluation n’est pas exploitable. La version ${escape(assessment.version)} vérifiée et structurée sera utilisée pour cette roadmap.</p>`
+      : '';
     const actions = eligible ? button(roadmap ? 'Nouvelle version' : 'Générer la roadmap', 'generate-roadmap', 'secondary') : button('Ouvrir la réglementation', 'open-regulatory', 'secondary');
-    if (!roadmap) return `${pageHeader('ROADMAP DE LANCEMENT', 'Préparez votre lancement.', 'Les étapes découlent des informations confirmées et d’une évaluation réglementaire vérifiée.', actions)}${emptyState('Roadmap non générée', missing || 'Lancez la génération pour organiser les conclusions de votre évaluation en étapes. Aucun délai ni obligation n’est inventé.')}`;
+    if (!roadmap) return `${pageHeader('ROADMAP DE LANCEMENT', 'Préparez votre lancement.', 'Les étapes découlent des informations confirmées et d’une évaluation réglementaire vérifiée.', actions)}${priorVerified}${emptyState('Roadmap non générée', missing || 'Lancez la génération pour organiser les conclusions de votre évaluation en étapes. Aucun délai ni obligation n’est inventé.')}`;
     const linked = roadmapAssessment;
     const conclusions = linked ? [...linked.result.obligations, ...linked.result.recommendations, ...linked.result.uncertainties] : [];
     const stats = progress(roadmap);
     const labels = { pending: 'À faire', in_progress: 'En cours', completed: 'Terminé', skipped: 'Ignoré' };
-    return `${pageHeader('ROADMAP DE LANCEMENT', `Version ${roadmap.version}`, `Créée le ${date(roadmap.created_at)} · Votre progression ne constitue pas une certification.`, actions)}
+    return `${pageHeader('ROADMAP DE LANCEMENT', `Version ${roadmap.version}`, `Créée le ${date(roadmap.created_at)} · Votre progression ne constitue pas une certification.`, actions)}${priorVerified}
       ${missing ? `<p class="workflow-notice">${escape(missing)} L’historique reste consultable.</p>` : ''}
       <nav class="version-strip" aria-label="Versions de la roadmap">${roadmaps.map((item) => `<button data-action="select-roadmap" data-version="${item.version}" aria-current="${item.version === roadmap.version ? 'true' : 'false'}">v${item.version}</button>`).join('')}</nav>
       <section class="surface roadmap-progress"><strong>${stats.complete} / ${stats.total} étapes terminées</strong><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${Math.max(stats.total, 1)}" aria-valuenow="${stats.complete}"><span style="width:${stats.percent}%"></span></div></section>
@@ -326,6 +337,70 @@ const dependencies = roadmap.items.filter((candidate) => item.dependency_item_re
     return `${pageHeader('CONFORMITE', 'Controles et preuves', 'Suivez les controles et les elements de preuve enregistres par RegBridge.', calculateAction)}${picker}${scoreCard}${history}${nextActions}${list}${evidencePanel}`;
   }
 
+  function launchRoadmap({ roadmap, project = {}, facts = [], assessment, latestAssessment, roadmaps = [], roadmapAssessment }) {
+    const confirmed = new Set(Array.isArray(project.confirmed_fields)
+      ? project.confirmed_fields
+      : Object.entries(project.confirmed_fields || {}).filter(([, value]) => value === 'confirmed').map(([key]) => key));
+    facts.filter((fact) => ['confirmed', 'corrected'].includes(fact.status)).forEach((fact) => confirmed.add(fact.domain));
+    const enoughContext = confirmed.size >= 2;
+    const usableAssessment = assessment?.status === 'completed'
+      && ['pass', 'pass_with_warnings'].includes(assessment.verification_verdict)
+      && ['obligations', 'recommendations'].some((key) => assessment.result?.[key]?.length);
+    const actions = enoughContext
+      ? button(roadmap ? 'Générer une nouvelle version' : 'Générer ma roadmap de lancement', 'generate-roadmap', 'secondary')
+      : button('Compléter les informations du projet', project.project_type === 'idea' ? 'open-onboarding' : 'open-facts', 'secondary');
+    const introduction = 'RegBridge préparera une checklist à partir des informations confirmées de votre projet. Les conclusions réglementaires disponibles seront ajoutées lorsqu’elles existent.';
+    if (!roadmap) {
+      const missing = enoughContext
+        ? introduction
+        : `Confirmez au moins deux informations du projet avant la génération. ${confirmed.size} information${confirmed.size > 1 ? 's' : ''} confirmée${confirmed.size > 1 ? 's' : ''} actuellement.`;
+      const coverage = enoughContext && !usableAssessment
+        ? `<p class="workflow-notice" role="status">Couverture réglementaire à compléter. La checklist de lancement reste disponible. ${button('Ouvrir la réglementation', 'open-regulatory', 'text')}</p>`
+        : '';
+      return `${pageHeader('ROADMAP DE LANCEMENT', 'Préparez votre lancement.', introduction, actions)}${coverage}${emptyState('Roadmap non générée', missing)}`;
+    }
+
+    const stats = progress(roadmap);
+    const statusLabels = { pending: 'À faire', in_progress: 'En cours', completed: 'Terminé', skipped: 'Ignoré' };
+    const categoryLabels = {
+      administrative: 'Administratif', legal: 'Juridique', finance: 'Finance', contracts: 'Contrats',
+      privacy: 'Données personnelles', security: 'Sécurité et hébergement', regulatory: 'Réglementation',
+      ip: 'Propriété intellectuelle', hr: 'Équipe et RH', launch: 'Mise sur le marché',
+      obligation: 'Réglementation', recommendation: 'Réglementation', uncertainty: 'Point à vérifier',
+    };
+    const originLabels = { BASELINE: 'Général', PROJECT_CONTEXT: 'Selon votre projet', REGULATORY_ASSESSMENT: 'Évaluation réglementaire' };
+    const sections = [
+      ['Préparer la structure', ['legal', 'administrative']],
+      ["Préparer l’exploitation", ['finance', 'contracts', 'ip', 'hr']],
+      ['Données et numérique', ['privacy', 'security']],
+      ['Avant le lancement', ['regulatory', 'launch', 'obligation', 'recommendation', 'uncertainty']],
+    ];
+    const linked = roadmapAssessment;
+    const rendered = new Set();
+    const renderItem = (item, index) => {
+      rendered.add(item.id);
+      const dependencies = roadmap.items.filter((candidate) => item.dependency_item_refs?.includes(candidate.id));
+      const origins = (item.origins?.length ? item.origins : ['REGULATORY_ASSESSMENT']).map((origin) => originLabels[origin] || origin);
+      return `<details class="surface roadmap-item" data-roadmap-status="${escape(item.status)}"><summary><span>${index + 1}.</span><span><strong>${escape(item.title)}</strong><small>${escape(categoryLabels[item.item_type] || item.item_type)} · ${escape(origins.join(' + '))}</small></span>${badge(statusLabels[item.status])}</summary><div class="roadmap-detail"><h3>Pourquoi cette étape ?</h3><p>${escape(item.justification)}</p>${item.origins?.includes('REGULATORY_ASSESSMENT') && linked ? `<p>Enrichissement issu de l’évaluation réglementaire v${linked.version}.</p>` : ''}${dependencies.length ? `<p>Étapes liées : ${dependencies.map((dep) => escape(dep.title)).join(' · ')}</p>` : ''}<label>Statut<select data-roadmap-item="${escape(item.id)}">${Object.entries(statusLabels).map(([value, label]) => `<option value="${value}" ${item.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div></details>`;
+    };
+    let itemIndex = 0;
+    const grouped = sections.map(([heading, categories]) => {
+      const items = [...roadmap.items].sort((a, b) => a.priority_order - b.priority_order).filter((item) => categories.includes(item.item_type));
+      if (!items.length) return '';
+      const content = items.map((item) => renderItem(item, itemIndex++)).join('');
+      return `<section class="section-block roadmap-group"><div class="section-heading"><h2>${escape(heading)}</h2><span>${items.length} étape${items.length > 1 ? 's' : ''}</span></div><div class="roadmap-list">${content}</div></section>`;
+    }).join('');
+    const remaining = roadmap.items.filter((item) => !rendered.has(item.id));
+    const coverage = roadmap.regulatory_coverage === 'incomplete' || !roadmap.regulatory_assessment_id
+      ? `<p class="workflow-notice" role="status">Couverture réglementaire à compléter. Cette roadmap reste une checklist de préparation. ${button('Ouvrir la réglementation', 'open-regulatory', 'text')}</p>`
+      : '<p class="workflow-notice" role="status">Les conclusions réglementaires vérifiées disponibles ont enrichi cette version.</p>';
+    return `${pageHeader('ROADMAP DE LANCEMENT', `Version ${roadmap.version}`, `Créée le ${date(roadmap.created_at)} · Votre progression ne constitue pas une certification.`, actions)}${coverage}
+      <nav class="version-strip" aria-label="Versions de la roadmap">${roadmaps.map((item) => `<button data-action="select-roadmap" data-version="${item.version}" aria-current="${item.version === roadmap.version ? 'true' : 'false'}">v${item.version}</button>`).join('')}</nav>
+      <section class="surface roadmap-progress"><strong>${stats.complete} / ${stats.total} étapes terminées</strong><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${Math.max(stats.total, 1)}" aria-valuenow="${stats.complete}"><span style="width:${stats.percent}%"></span></div></section>
+      <div class="filter-pills">${[['all', 'Tous'], ...Object.entries(statusLabels)].map(([value, label]) => `<button data-action="filter-roadmap" data-filter="${value}">${label}</button>`).join('')}</div>
+      ${grouped}${remaining.length ? `<section class="section-block roadmap-group"><div class="section-heading"><h2>Autres étapes</h2></div><div class="roadmap-list">${remaining.map((item) => renderItem(item, itemIndex++)).join('')}</div></section>` : ''}`;
+  }
+
   function profile({ user, project, roadmap }) {
     const initials = user.email.slice(0, 2).toUpperCase();
     const next = roadmap?.items?.find((item) => !['completed', 'skipped'].includes(item.status));
@@ -342,5 +417,5 @@ const dependencies = roadmap.items.filter((candidate) => item.dependency_item_re
       </section>`;
   }
 
-  window.RegBridgeEntrepreneurViews = Object.freeze({ labels, lifecycle, escape, date, badge, button, dashboard, createProject, onboarding, project, regulatory, roadmap, documents: documentsV2, contracts: contractsV2, access, compliance: complianceV2, profile, inlineError, progress });
+  window.RegBridgeEntrepreneurViews = Object.freeze({ labels, lifecycle, escape, date, badge, button, dashboard, createProject, onboarding, project, regulatory, roadmap: launchRoadmap, documents: documentsV2, contracts: contractsV2, access, compliance: complianceV2, profile, inlineError, progress });
 })();

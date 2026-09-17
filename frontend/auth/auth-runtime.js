@@ -136,12 +136,12 @@
   }
 
   async function apiRequest(path, options = {}) {
-    const { timeoutMs, ...fetchOptions } = options;
+    const { timeoutMs, requestId: suppliedRequestId, ...fetchOptions } = options;
     const firstRequest = requestSignal({ ...fetchOptions, timeoutMs });
     try {
       const manager = await abortable(loadManager(), firstRequest.signal);
       let user = await getOIDCUser(manager, firstRequest.signal);
-      const requestId = window.crypto.randomUUID();
+      const requestId = suppliedRequestId || window.crypto.randomUUID();
       let response;
       try {
         response = await fetch(path, { ...fetchOptions, signal: firstRequest.signal, headers: requestHeaders(fetchOptions, user, requestId) });

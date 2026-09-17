@@ -49,6 +49,15 @@ async def test_entrepreneur_pages_idle_history_and_cancel_race(browser_page, syn
     await expect(page.locator("[data-copilot-generating]")).to_be_hidden()
     await expect(page.locator("[data-submit-copilot]")).to_be_enabled()
     await expect(page.locator("[data-copilot-context-count]")).to_contain_text("6/6")
+    await expect(page.locator("[data-copilot-drawer]")).to_have_attribute("role", "complementary")
+    await expect(page.locator("[data-copilot-drawer]")).not_to_have_attribute("aria-modal", "true")
+    await page.wait_for_timeout(300)  # Let the documented 220 ms dock transition settle.
+    frame_box = await page.locator(".app-frame").bounding_box()
+    drawer_box = await page.locator("[data-copilot-drawer]").bounding_box()
+    assert frame_box and drawer_box and frame_box["x"] + frame_box["width"] <= drawer_box["x"] + 1
+    await page.locator('[data-nav-view="roadmap"]').first.click()
+    await expect(page.locator("body")).to_have_class(re.compile("copilot-open"))
+    await expect(page.locator("[data-workspace] h1")).to_be_visible()
 
     # A persisted older thread never becomes active just by opening the drawer.
     await page.evaluate("""async () => {
@@ -65,7 +74,7 @@ async def test_entrepreneur_pages_idle_history_and_cancel_race(browser_page, syn
     await expect(page.locator("[data-copilot-messages]")).not_to_contain_text("bonjour")
     await page.locator("[data-show-copilot-history]").click()
     await expect(page.locator("[data-copilot-history]")).to_be_visible()
-    await page.locator("[data-copilot-history]").select_option(index=1)
+    await page.locator("[data-copilot-thread]").filter(has_text="Previous synthetic conversation").click()
     await expect(page.locator("[data-copilot-messages]")).to_contain_text("bonjour historique")
     await page.locator("[data-new-copilot]").click()
     await expect(page.locator("[data-copilot-messages]")).not_to_contain_text("bonjour")
@@ -95,14 +104,25 @@ async def test_entrepreneur_pages_idle_history_and_cancel_race(browser_page, syn
     await asyncio.wait_for(pending.wait(), 20)
     await expect(page.locator("[data-copilot-generating]")).to_be_visible()
     await expect(page.locator("[data-submit-copilot]")).to_be_disabled()
-    await page.locator("[data-cancel-copilot]").click()
+    await page.locator("[data-show-copilot-history]").click()
+    await expect(page.locator("[data-copilot-history]")).to_be_visible()
+    await page.locator("[data-copilot-thread]").filter(has_text="Previous synthetic conversation").click()
+    await expect(page.locator("[data-copilot-messages]")).to_contain_text("bonjour historique")
+    release.set()
     await expect(page.locator("[data-copilot-generating]")).to_be_hidden()
     await expect(page.locator("[data-submit-copilot]")).to_be_enabled()
+    await expect(page.locator("[data-copilot-messages]")).not_to_contain_text("Synthetic result 1")
+    await page.locator("[data-new-copilot]").click()
     await page.locator("#copilot-question").fill("Synthetic question two")
     await page.locator("[data-submit-copilot]").click()
     await expect(page.locator("[data-copilot-messages]")).to_contain_text("Synthetic result 2")
-    release.set()
-    await expect(page.locator("[data-copilot-messages]")).not_to_contain_text("Synthetic result 1")
+    response_calls = len(calls)
+    await page.locator("[data-expand-copilot]").click()
+    await expect(page.locator("[data-copilot-drawer]")).to_have_attribute("role", "dialog")
+    await expect(page.locator("[data-copilot-messages]")).to_contain_text("Synthetic result 2")
+    await page.locator("[data-expand-copilot]").click()
+    await expect(page.locator("[data-copilot-drawer]")).to_have_attribute("role", "complementary")
+    assert len(calls) == response_calls
     await page.locator("[data-close-copilot]").click()
     await page.locator("[data-open-copilot]").click()
     await expect(page.locator("[data-copilot-generating]")).to_be_hidden()
@@ -133,6 +153,68 @@ async def test_entrepreneur_pages_idle_history_and_cancel_race(browser_page, syn
         json.dumps({'synthetic_only': True, 'responses': network, 'js_errors': errors}, indent=2), encoding='utf-8')
     assert not [entry for entry in network if entry['status'] >= 500]
     assert not errors
+
+
+async def test_regulatory_and_copilot_ui_recover_after_http_failure(browser_page, synthetic_user):
+    page = browser_page
+    await authenticate(page, synthetic_user)
+    await create_project(page)
+    await complete_onboarding(page, {'activity': 'Synthetic SaaS pour clients professionnels'})
+    # Inferred proposals require an explicit decision before regulatory analysis.
+    await page.locator('[data-nav-view="project"]').first.click()
+    await expect(page.locator('[data-workspace]')).to_have_attribute('aria-busy', 'false')
+    await page.locator('[data-tab="facts"]').click()
+    await expect(page.locator('[data-workspace]')).to_have_attribute('aria-busy', 'false')
+    while await page.locator('[data-action="reject-fact"]').count():
+        async with page.expect_response(lambda response: response.request.method == 'DELETE' and '/facts/' in response.url):
+            await page.locator('[data-action="reject-fact"]').first.click()
+        await expect(page.locator('[data-workspace]')).to_have_attribute('aria-busy', 'false')
+    await page.locator('[data-nav-view="regulatory"]').first.click()
+    await expect(page.locator('[data-workspace]')).to_have_attribute('aria-busy', 'false')
+
+    assessment_calls = 0
+
+    async def fail_assessment(route):
+        nonlocal assessment_calls
+        if route.request.method != 'POST':
+            await route.continue_()
+            return
+        assessment_calls += 1
+        await route.fulfill(status=503, json={'detail': 'Synthetic provider failure'})
+
+    await page.route('**/projects/*/assessments', fail_assessment)
+    assessment_button = page.locator('[data-action="generate-assessment"]')
+    await assessment_button.click()
+    await expect(page.locator('.toast-error')).to_be_visible()
+    await expect(assessment_button).to_be_enabled()
+    assert assessment_calls == 1
+
+    await page.locator('[data-open-copilot]').click()
+    response_calls = 0
+
+    async def recover_copilot(route):
+        nonlocal response_calls
+        response_calls += 1
+        if response_calls == 1:
+            await route.fulfill(status=503, json={'detail': 'Synthetic provider failure'})
+            return
+        content = route.request.post_data_json['content']
+        await route.fulfill(status=201, json={
+            'user_message': {'id': 'recovery-user', 'role': 'user', 'content': content},
+            'assistant_message': {'id': 'recovery-assistant', 'role': 'assistant', 'content': 'Synthetic recovered response'},
+        })
+
+    await page.route('**/conversations/*/responses', recover_copilot)
+    await page.locator('#copilot-question').fill('Synthetic failing question')
+    await page.locator('[data-submit-copilot]').click()
+    await expect(page.locator('[data-copilot-error]')).to_be_visible()
+    await expect(page.locator('[data-copilot-generating]')).to_be_hidden()
+    await expect(page.locator('[data-submit-copilot]')).to_be_enabled()
+    await page.locator('#copilot-question').fill('Synthetic recovery question')
+    await page.locator('[data-submit-copilot]').click()
+    await expect(page.locator('[data-copilot-error]')).to_be_hidden()
+    await expect(page.locator('[data-copilot-messages]')).to_contain_text('Synthetic recovered response')
+    assert response_calls == 2
 
 
 @pytest.mark.parametrize('action', ['stop-before-thread', 'switch', 'logout'])

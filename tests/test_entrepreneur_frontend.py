@@ -203,7 +203,11 @@ def test_copilot_uses_persisted_backend_conversation_and_authorized_project_iden
     assert "content_json?.sources" in app_script
     assert "state.roadmap ? ['Quelles sont mes prochaines étapes ?']" in app_script
     assert "Projet actif modifié. Une nouvelle conversation a été ouverte." in app_script
-    assert 'role="dialog"' in html
+    assert 'role="complementary"' in html
+    assert 'aria-modal="true"' not in html
+    assert "subject_type=project&subject_id=" in api
+    assert "mode: 'docked'" in app_script
+    assert "copilot-open:not(.copilot-fullscreen)" in (ENTREPRENEUR / "entrepreneur.css").read_text(encoding="utf-8")
     assert 'aria-live="polite"' in html
     assert "RegBridge analyse le contexte autorisé" in html
     assert "api.mistral" not in api.lower() + app_script.lower()
