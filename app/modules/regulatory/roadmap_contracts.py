@@ -9,7 +9,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-RoadmapItemType = Literal["obligation", "recommendation", "uncertainty"]
+RoadmapItemType = Literal[
+    "obligation", "recommendation", "uncertainty",  # legacy roadmap versions
+    "administrative", "legal", "finance", "contracts", "privacy",
+    "security", "regulatory", "ip", "hr", "launch",
+]
+RoadmapItemOrigin = Literal["BASELINE", "PROJECT_CONTEXT", "REGULATORY_ASSESSMENT"]
 RoadmapItemStatus = Literal["pending", "in_progress", "completed", "skipped"]
 RoadmapPurpose = Literal["creation", "compliance"]
 
@@ -25,6 +30,7 @@ class RoadmapItemResponse(BaseModel):
     priority_order: int
     status: RoadmapItemStatus
     source_conclusion_refs: list[str]
+    origins: list[RoadmapItemOrigin]
     dependency_item_refs: list[uuid.UUID]
     created_at: datetime
     updated_at: datetime
@@ -35,7 +41,8 @@ class LaunchRoadmapResponse(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
-    regulatory_assessment_id: uuid.UUID
+    regulatory_assessment_id: uuid.UUID | None
+    regulatory_coverage: Literal["enriched", "incomplete"]
     version: int
     status: str
     purpose: RoadmapPurpose
@@ -46,7 +53,7 @@ class LaunchRoadmapResponse(BaseModel):
 class RoadmapGenerateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    regulatory_assessment_id: uuid.UUID
+    regulatory_assessment_id: uuid.UUID | None = None
 
 
 class RoadmapItemStatusUpdate(BaseModel):

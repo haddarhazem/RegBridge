@@ -35,7 +35,11 @@ class RoadmapItemProjection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
-    item_type: Literal["obligation", "recommendation", "uncertainty"]
+    item_type: Literal[
+        "obligation", "recommendation", "uncertainty",
+        "administrative", "legal", "finance", "contracts", "privacy",
+        "security", "regulatory", "ip", "hr", "launch",
+    ]
     title: str = Field(max_length=500)
     priority_order: int
     status: Literal["pending", "in_progress", "completed", "skipped"]
@@ -49,7 +53,7 @@ class RoadmapProjection(BaseModel):
     id: uuid.UUID
     version: int
     status: str = Field(max_length=20)
-    regulatory_assessment_id: uuid.UUID
+    regulatory_assessment_id: uuid.UUID | None
     assessment_version: int | None = None
     items: list[RoadmapItemProjection] = Field(default_factory=list, max_length=20)
 

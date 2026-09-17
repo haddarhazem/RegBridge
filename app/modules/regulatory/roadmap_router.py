@@ -18,13 +18,23 @@ Principal = Annotated[AuthenticatedPrincipal, Depends(get_authenticated_principa
 
 
 def response(roadmap, items) -> LaunchRoadmapResponse:
+    def origins(item) -> list[str]:
+        values = []
+        for ref in item.source_conclusion_refs or []:
+            origin = str(ref).partition(":")[0]
+            if origin in {"BASELINE", "PROJECT_CONTEXT", "REGULATORY_ASSESSMENT"} and origin not in values:
+                values.append(origin)
+        # Old immutable roadmap versions predate explicit origin tagging.
+        return values or ["REGULATORY_ASSESSMENT"]
+
     return LaunchRoadmapResponse(
         id=roadmap.id, project_id=roadmap.project_id, regulatory_assessment_id=roadmap.regulatory_assessment_id,
+        regulatory_coverage="enriched" if roadmap.regulatory_assessment_id else "incomplete",
         version=roadmap.version, status=roadmap.status, purpose=roadmap.purpose,
         items=[RoadmapItemResponse(
             id=item.id, roadmap_id=item.roadmap_id, item_type=item.item_type, title=item.title,
             justification=item.justification, priority_order=item.priority_order, status=item.status,
-            source_conclusion_refs=item.source_conclusion_refs, dependency_item_refs=item.dependency_item_refs,
+            source_conclusion_refs=item.source_conclusion_refs, origins=origins(item), dependency_item_refs=item.dependency_item_refs,
             created_at=item.created_at, updated_at=item.updated_at,
         ) for item in items],
         created_at=roadmap.created_at,
@@ -63,5 +73,6 @@ async def update_roadmap_item(project_id: uuid.UUID, version: int, item_id: uuid
     return RoadmapItemResponse(
         id=item.id, roadmap_id=item.roadmap_id, item_type=item.item_type, title=item.title, justification=item.justification,
         priority_order=item.priority_order, status=item.status, source_conclusion_refs=item.source_conclusion_refs,
+        origins=[str(ref).partition(":")[0] for ref in item.source_conclusion_refs if str(ref).partition(":")[0] in {"BASELINE", "PROJECT_CONTEXT", "REGULATORY_ASSESSMENT"}] or ["REGULATORY_ASSESSMENT"],
         dependency_item_refs=item.dependency_item_refs, created_at=item.created_at, updated_at=item.updated_at,
     )

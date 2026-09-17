@@ -118,14 +118,16 @@ class ProjectContextRepository:
         )
         if roadmap is None:
             return None
-        assessment_version = await self.session.scalar(
-            select(RegulatoryAssessment.version).where(
-                RegulatoryAssessment.id == roadmap.regulatory_assessment_id,
-                RegulatoryAssessment.project_id == project_id,
+        assessment_version = None
+        if roadmap.regulatory_assessment_id is not None:
+            assessment_version = await self.session.scalar(
+                select(RegulatoryAssessment.version).where(
+                    RegulatoryAssessment.id == roadmap.regulatory_assessment_id,
+                    RegulatoryAssessment.project_id == project_id,
+                )
             )
-        )
-        if assessment_version is None:
-            return None
+            if assessment_version is None:
+                return None
         rows = await self.session.scalars(
             select(LaunchRoadmapItem)
             .where(LaunchRoadmapItem.roadmap_id == roadmap.id)

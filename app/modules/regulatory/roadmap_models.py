@@ -21,7 +21,7 @@ class LaunchRoadmap(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    regulatory_assessment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("regulatory_assessments.id"), nullable=False)
+    regulatory_assessment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("regulatory_assessments.id"), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     purpose: Mapped[str] = mapped_column(String(20), nullable=False, server_default="creation")
@@ -32,7 +32,10 @@ class LaunchRoadmapItem(Base):
     __tablename__ = "launch_roadmap_items"
     __table_args__ = (
         Index("ix_launch_roadmap_items_roadmap_order", "roadmap_id", "priority_order"),
-        CheckConstraint("item_type IN ('obligation', 'recommendation', 'uncertainty')", name="launch_roadmap_items_type"),
+        CheckConstraint(
+            "item_type IN ('obligation', 'recommendation', 'uncertainty', 'administrative', 'legal', 'finance', 'contracts', 'privacy', 'security', 'regulatory', 'ip', 'hr', 'launch')",
+            name="launch_roadmap_items_type",
+        ),
         CheckConstraint("status IN ('pending', 'in_progress', 'completed', 'skipped')", name="launch_roadmap_items_status"),
     )
 
