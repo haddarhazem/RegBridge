@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -7,6 +8,7 @@ from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.core.development_cache import DevelopmentStaticNoStoreMiddleware
 from app.core.request_id import RequestIdMiddleware
 from app.db import models as _models  # noqa: F401 - register all ORM models deterministically
 from app.modules.ai.router import router as conversations_router
@@ -34,7 +36,18 @@ logger = logging.getLogger(__name__)
 def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging()
     active_settings = settings or get_settings()
-    application = FastAPI(title=active_settings.app_name)
+    lifespan = None
+    if active_settings.regulatory_warmup_on_startup:
+        from app.modules.regulatory.retrieval import warm_regulatory_retriever
+
+        @asynccontextmanager
+        async def lifespan(_application: FastAPI):
+            await warm_regulatory_retriever()
+            yield
+
+    application = FastAPI(title=active_settings.app_name, lifespan=lifespan)
+    if active_settings.environment.casefold() in {"development", "local", "demo"}:
+        application.add_middleware(DevelopmentStaticNoStoreMiddleware)
     application.add_middleware(RequestIdMiddleware)
     application.include_router(health_router)
     application.include_router(metrics_router)

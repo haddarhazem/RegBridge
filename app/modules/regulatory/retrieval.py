@@ -143,3 +143,9 @@ def get_regulatory_retriever() -> RegulatoryRetriever:
     except Exception as exc:
         raise RegulatoryRetrievalError("Regulatory embedding service is unavailable") from exc
     return RegulatoryRetriever(embedder=embedder, client=client, collection=settings.qdrant_collection)
+
+
+async def warm_regulatory_retriever() -> None:
+    """Load the configured retriever before a demo runtime reports ready."""
+
+    await run_in_threadpool(get_regulatory_retriever)

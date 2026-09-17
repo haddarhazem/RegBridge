@@ -5,7 +5,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.modules.ai.llm import LLMGenerationError, LLMGenerationRequest, LLMMessage, LLMProviderUnavailableError
-from app.modules.ai.providers.gemini import GeminiLLMProvider, _schema_payload
+from app.modules.ai.providers.gemini import GeminiLLMProvider, _safe_error_metadata, _schema_payload
 
 
 def _request(**kwargs):
@@ -69,13 +69,100 @@ async def test_gemini_maps_rate_limit_without_leaking_secret() -> None:
         return httpx.Response(429, json={"error": "test-secret"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        provider = GeminiLLMProvider(api_key=SecretStr("test-secret"), model="gemini-3.8-flash", client=client)
+        provider = GeminiLLMProvider(
+            api_key=SecretStr("test-secret"),
+            model="gemini-3.8-flash",
+            client=client,
+            max_attempts=1,
+            min_request_interval_seconds=0,
+        )
         with pytest.raises(LLMProviderUnavailableError) as caught:
             await provider.generate(_request())
 
     assert caught.value.category == "provider_rate_limited"
     assert caught.value.http_status == 429
     assert "test-secret" not in str(caught.value)
+
+
+def test_gemini_classifies_rate_limit_without_retaining_provider_message() -> None:
+    response = httpx.Response(
+        429,
+        json={
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "message": "Requests per minute rate limit for secret-do-not-log",
+            }
+        },
+    )
+
+    metadata = _safe_error_metadata(response)
+
+    assert metadata["provider_error_code"] == 429
+    assert metadata["provider_error_status"] == "RESOURCE_EXHAUSTED"
+    assert metadata["rate_limit_classification"] == "REQUEST_RATE"
+    assert "secret-do-not-log" not in json.dumps(metadata)
+
+
+@pytest.mark.asyncio
+async def test_gemini_retries_transient_5xx_once_then_succeeds() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(503, json={"error": {"code": 503, "status": "UNAVAILABLE"}})
+        return httpx.Response(
+            200,
+            json={
+                "model": "gemini-test",
+                "status": "completed",
+                "steps": [{"type": "model_output", "content": [{"type": "text", "text": "Bonjour"}]}],
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = GeminiLLMProvider(
+            api_key=SecretStr("test-secret"),
+            model="gemini-3.8-flash",
+            client=client,
+            max_attempts=2,
+            retry_base_seconds=0.1,
+            retry_max_seconds=0.1,
+            min_request_interval_seconds=0,
+        )
+        result = await provider.generate(_request())
+
+    assert result.content == "Bonjour"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_gemini_does_not_retry_daily_quota() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            429,
+            json={"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "Daily quota exceeded"}},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = GeminiLLMProvider(
+            api_key=SecretStr("test-secret"),
+            model="gemini-3.8-flash",
+            client=client,
+            max_attempts=3,
+            min_request_interval_seconds=0,
+        )
+        with pytest.raises(LLMProviderUnavailableError) as caught:
+            await provider.generate(_request())
+
+    assert calls == 1
+    assert caught.value.rate_limit_classification == "DAILY_QUOTA"
 
 
 @pytest.mark.asyncio

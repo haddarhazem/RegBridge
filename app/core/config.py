@@ -33,11 +33,13 @@ class Settings(BaseSettings):
     clamav_host: str = Field(default="localhost", alias="CLAMAV_HOST")
     clamav_port: int = Field(default=3310, alias="CLAMAV_PORT", gt=0)
     trace_max_payload_bytes: int = Field(default=32768, alias="TRACE_MAX_PAYLOAD_BYTES", gt=0)
+    copilot_diagnostics_enabled: bool = Field(default=False, alias="COPILOT_DIAGNOSTICS_ENABLED")
     qdrant_url: str | None = Field(default=None, alias="QDRANT_URL")
     qdrant_api_key: SecretStr | None = Field(default=None, alias="QDRANT_API_KEY", repr=False)
     qdrant_collection: str = Field(default="reglementation_chunks", alias="QDRANT_COLLECTION")
     bge_m3_model_name: str = Field(default="BAAI/bge-m3", alias="BGE_M3_MODEL_NAME")
     bge_m3_device: str = Field(default="cpu", alias="BGE_M3_DEVICE")
+    regulatory_warmup_on_startup: bool = Field(default=False, alias="REGULATORY_WARMUP_ON_STARTUP")
     mistral_api_key: SecretStr | None = Field(default=None, alias="MISTRAL_API_KEY", repr=False)
     mistral_model: str | None = Field(default=None, alias="MISTRAL_MODEL")
     mistral_ocr_model: str = Field(default="mistral-ocr-latest", alias="MISTRAL_OCR_MODEL")
@@ -50,6 +52,11 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(default="https://ollama.com/api", alias="OLLAMA_BASE_URL")
     gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY", repr=False)
     gemini_model: str = Field(default="gemini-3.8-flash", alias="GEMINI_MODEL")
+    gemini_max_attempts: int = Field(default=3, alias="GEMINI_MAX_ATTEMPTS", ge=1, le=5)
+    gemini_retry_base_seconds: float = Field(default=3.0, alias="GEMINI_RETRY_BASE_SECONDS", ge=0.1, le=30)
+    gemini_retry_max_seconds: float = Field(default=30.0, alias="GEMINI_RETRY_MAX_SECONDS", ge=0.1, le=60)
+    gemini_max_total_wait_seconds: float = Field(default=90.0, alias="GEMINI_MAX_TOTAL_WAIT_SECONDS", ge=1, le=300)
+    gemini_min_request_interval_seconds: float = Field(default=12.5, alias="GEMINI_MIN_REQUEST_INTERVAL_SECONDS", ge=0, le=60)
     regulatory_generation_max_tokens: int = Field(default=900, ge=1, le=4000, alias="REGULATORY_GENERATION_MAX_TOKENS")
     regulatory_verification_max_tokens: int = Field(default=900, ge=1, le=4000, alias="REGULATORY_VERIFICATION_MAX_TOKENS")
     document_external_processing_enabled: bool = Field(default=False, alias="DOCUMENT_EXTERNAL_PROCESSING_ENABLED")
@@ -61,6 +68,10 @@ class Settings(BaseSettings):
     @property
     def allowed_oidc_algorithms(self) -> list[str]:
         return [algorithm.strip() for algorithm in self.oidc_algorithms.split(",") if algorithm.strip()]
+
+    @property
+    def copilot_developer_diagnostics_enabled(self) -> bool:
+        return self.environment.lower() == "development" or self.copilot_diagnostics_enabled
 
     model_config = SettingsConfigDict(
         env_file=".env",

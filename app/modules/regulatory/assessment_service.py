@@ -9,6 +9,7 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 from app.core.config import get_settings
 
 from app.modules.ai.context import AuthorizedContextBuilder, ProjectAuthorizationService
@@ -121,7 +122,7 @@ class RegulatoryAssessmentService:
             project = await self._authorize(actor, project_id)
             snapshot = await self._create_snapshot(project)
         try:
-            orchestrator = self._orchestrator()
+            orchestrator = await run_in_threadpool(self._orchestrator)
             outcome = await orchestrator.run(OrchestrationRequest(
                 question=self._question(question, snapshot.facts),
                 principal=actor,

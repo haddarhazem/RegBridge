@@ -1,8 +1,8 @@
 # Entrepreneur demo stabilization
 
-Research: **PAUSED**. Gemini: **functional development provider**. Qualification:
-**DEFERRED**. No benchmark, provider comparison, corpus change or new research
-decision is part of this work.
+Research: **PAUSED**. The local demo provider is **Gemini 3.5 Flash-Lite** after
+the bounded operational qualification recorded below. This is a demo-recovery
+check, not a benchmark, provider comparison, corpus change or research decision.
 
 ## Runtime and synthetic data
 
@@ -90,16 +90,17 @@ From the repository root, with the actual services already running:
 
 ```powershell
 $env:DEMO_ACCEPTANCE='1'
-python -m scripts.demo_acceptance all
+python -m scripts.demo_acceptance presentation
 ```
 
-The harness logs in normally, uses the stable synthetic project, loads its actual
-assessment, generates a new roadmap, changes an item and reloads it, sends one
-real Copilot question, checks desktop/mobile fullscreen and hidden completion,
-loads the actual uploaded contract analysis, updates a real compliance control,
-calculates/reloads the score and logs out. No intercepted responses or direct
-database writes are used. Network records and screenshots are local ignored
-artifacts under `artifacts/browser-e2e/demo-*`.
+The `presentation` harness logs in normally, uses the stable synthetic project,
+loads its existing verified regulatory assessment and completed contract
+analysis, generates only a new deterministic roadmap, changes an item and
+reloads it, sends one real Copilot question, checks desktop/mobile fullscreen and
+hidden completion, updates a real compliance control, calculates/reloads the
+score and logs out. It never regenerates the assessment or contract analysis.
+No intercepted responses or direct database writes are used. Network records
+and screenshots are local ignored artifacts under `artifacts/browser-e2e/demo-*`.
 
 Individual `setup`/`regulatory`, `roadmap`, `copilot`, `contracts` and `compliance`
 stages exist for explicit operational diagnosis. `regulatory` and `contracts`
@@ -111,6 +112,106 @@ The `post` stage performs the unaffected tail after a provider failure: it reloa
 the already completed real contract analysis, recalculates/reloads compliance and
 logs out. It does not make another LLM call and does not replace the required
 uninterrupted `all` acceptance.
+
+The historical `all`, `regulatory` and `contracts` stages intentionally create
+new immutable provider-backed results and are diagnostic tools, not the reliable
+presentation path. Do not use them immediately before a live presentation.
+
+## Predictable backend startup
+
+Use the guarded Windows helper from the repository root:
+
+```powershell
+.\scripts\start-demo.ps1
+```
+
+It verifies the existing Compose dependencies, refuses an unrelated port-8000
+owner, starts one non-reloading Uvicorn process and waits for `/health`. If it
+reports an existing confirmed RegBridge Uvicorn process, replace only that
+process explicitly:
+
+```powershell
+.\scripts\start-demo.ps1 -ReplaceExistingRegBridge
+```
+
+Development responses for the landing, auth and Entrepreneur static assets carry
+`Cache-Control: no-store`; production cache behavior is unchanged.
+
+## Entrepreneur lifecycle/API matrix
+
+| Frontend operation | Idea endpoint | Startup endpoint | General endpoint | Valid lifecycle(s) |
+| --- | --- | --- | --- | --- |
+| Create/select/read/update project | Existing `POST /projects/ideas` is not used by this UI | None | `POST/GET/PATCH /projects...` | All; creation payload starts at `idea` |
+| Adaptive onboarding | `GET/PATCH /projects/{id}/onboarding` | None | None | `idea` only |
+| Initial fact inference | `POST /projects/{id}/facts/infer` | None | None | `idea` only |
+| Review confirmed/inferred facts | None | None | `/projects/{id}/facts...` | All, with active membership |
+| Lifecycle transition/history | None | None | `/projects/{id}/transition`, `/lifecycle-history` | `idea → startup_in_creation → existing_startup` |
+| Regulatory assessments | None | None | `/projects/{id}/assessments...` | All current project lifecycles |
+| Launch roadmaps | None | None | `/projects/{id}/roadmaps...` | All current project lifecycles with a verified structured assessment |
+| Documents and contract analysis | None | None | `/projects/{id}/documents`, `/documents/...` | All current project lifecycles with object authorization |
+| Compliance controls and scoring | None | None | `/projects/{id}/compliance...` | Frontend: startup lifecycles; backend: active authorized membership |
+| Startup profile | None | `/projects/{id}/startup-profile...` | None | `startup_in_creation`, `existing_startup` |
+
+The startup UI no longer renders onboarding or inference controls that target
+idea-only operations. No new `GET /ideas/...` endpoint was created: the general
+project read contract already supplies the project data needed after transition.
+
+## Gemini demo request governor
+
+The configured Gemini adapter is a process-wide cached provider. Its request
+boundary serializes generation, spaces calls from the **end** of the prior call,
+and performs at most three attempts within a 90-second total budget. Retryable
+429 and 500/502/503/504 responses use bounded backoff with jitter and honor
+`Retry-After`. A daily quota classification fails immediately. A 429 that omits
+quota details receives a conservative bounded 30-second cooldown; safe logs
+contain only status/code/classification, retry timing and allowlisted quota
+identifiers.
+
+The measured pre-hardening sequence was: regulatory generation `HTTP 200`, then
+semantic verification `HTTP 429` three times after approximately 3.0 and 6.3
+seconds. Gemini returned no `Retry-After` or quota detail, so the exact quota
+class remains `UNKNOWN`; the assessment correctly persisted as blocked. This
+evidence justified longer response-to-request spacing and the bounded unknown-429
+cooldown, but does not justify claiming that a hard or daily quota is solved.
+
+A later blocked assessment does not erase an earlier verified version. The
+Roadmap screen transparently selects the newest verified structured assessment,
+identifies its version to the user, and keeps blocked attempts in history.
+
+## Demo provider recovery — 2026-09-13
+
+Official Gemini documentation lists `gemini-3.5-flash-lite` as a stable text
+model supported by the Developer/Interactions API, including structured output;
+the pricing table lists free-tier input and output. A bounded single-attempt
+qualification passed in this order:
+
+1. exact plain `OK` response: 10 tokens, 2.87 seconds;
+2. tiny structured JSON plus local Pydantic validation: 23 tokens, 2.39 seconds;
+3. the production `SemanticVerificationOutput` schema plus exact local Pydantic
+   validation: verdict `pass`, 255 tokens, 2.72 seconds.
+
+Because the first candidate passed all gates, `gemini-3.5-flash` was not called.
+The local gitignored `.env` now selects `LLM_PROVIDER=gemini` and
+`GEMINI_MODEL=gemini-3.5-flash-lite`; support for Gemini 3.8 remains in code.
+
+The final `presentation` browser journey passed. It reused verified assessment
+ v3 and the existing completed eight-observation contract analysis, generated
+deterministic roadmap v9 with two items and persisted an item-status change,
+then completed one Copilot turn with the required question, a visible
+2,333-character answer and no
+warnings. Closing, navigating and reopening preserved the response; desktop and
+mobile fullscreen checks passed. Compliance recomputation persisted the honest
+synthetic score of 0/1 (0%), followed by successful logout. The captured business
+network had no 4xx/5xx response, failed transport or JavaScript exception.
+
+The Copilot trace records exactly two successful Gemini operations using
+`gemini-3.5-flash-lite`: answer generation (888 input, 268 output tokens) and
+semantic verification (1,236 input, 322 output tokens). No regulatory assessment
+or contract-analysis provider call occurred during the final presentation.
+
+If the provider returns HTTP 429 in a future demo, the UI displays only:
+`Le service IA a atteint sa limite temporaire. Réessayez dans quelques instants.`
+Internal provider status, quota identifiers and error text remain hidden.
 
 ## Personal manual acceptance checklist
 
@@ -125,9 +226,9 @@ uninterrupted `all` acceptance.
 5. Open **Roadmap de lancement → Nouvelle version**. Expect the two actual
    recommendation-derived steps. Reload; open the first step, change **Statut**,
    wait for saving, then reload again. Its status must remain.
-6. Open **Copilote** and send **Quelles obligations réglementaires principales
-   concernent ce projet ? Précisez les informations manquantes et les limites des
-   sources disponibles.** Close it while loading and navigate to Roadmap. Reopen:
+6. Open **Copilote** and send **Quelles sont les principales obligations
+   réglementaires pour EnerSight, et quelles informations manquent encore ?**
+   Close it while loading and navigate to Roadmap. Reopen:
    the same question and its answer/loading/error state must remain.
 7. Use the expand button, then reduce, close and reopen. Fullscreen must fill the
    viewport with reachable controls and input. Closing must not cancel; **Arrêter**
@@ -175,3 +276,46 @@ to run them only after the final real-browser acceptance succeeds.
 **Ready to commit: NO.** Required next steps: restore sufficient Gemini quota or
 availability, rerun the real sequential acceptance, then execute focused and full
 regression. Do not remove the verifier or change provider to manufacture a pass.
+
+## Final runtime-hardening attempt — 2026-09-12
+
+The backend now runs through `scripts/start-demo.ps1` as one non-reloading
+Uvicorn process. The four Entrepreneur assets served by that process were
+byte-for-byte identical to the working tree and carried development-only
+`Cache-Control: no-store` headers.
+
+The local-only browser stages passed after hardening:
+
+- roadmap v7 was created through the real UI from verified structured assessment
+  v3, with two persisted items and a persisted status change;
+- the startup UI exposed zero idea-only onboarding/inference actions;
+- the existing clean document and completed eight-observation contract analysis
+  loaded normally;
+- compliance control update and score calculation/reload persisted through the
+  UI;
+- logout completed;
+- these passes recorded zero non-2xx business responses, failed transports or
+  JavaScript exceptions.
+
+The explicitly authorized uninterrupted Gemini run did not pass. Regulatory
+retrieval returned five Qdrant results, but Gemini returned HTTP 429 on all three
+generation attempts. The adapter waited approximately 30 seconds between each
+attempt and failed closed after its bounded 90-second budget. The responses had
+no provider error code/status, `Retry-After`, quota metric, quota ID, location or
+model detail, so the safe classification remains `UNKNOWN`; it must not be
+reported as a proven daily or request-rate quota. Assessment v5 was consequently
+persisted as `failed/block` with no obligations, recommendations or sources.
+
+Because the uninterrupted browser journey failed before Copilot, contracts and
+compliance, the post-success regression gate was not opened. Focused/full tests,
+compilation, standalone JS syntax, import-boundary scan, secret scan and
+`git diff --check` remain intentionally not run for this final attempt.
+
+A single authorized retry after the local date changed produced the same result:
+assessment v6 failed closed after three HTTP 429 responses. The responses were
+approximately 45 and 31 seconds apart once response-to-request spacing and the
+unknown-quota cooldown were combined. They still contained no safe quota or
+retry metadata. This rules out a short in-process request burst as the sufficient
+cause, but does not provide enough evidence to distinguish a hard account quota,
+model-specific quota or provider capacity limit. No further Gemini calls were
+made.
