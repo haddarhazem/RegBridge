@@ -18,8 +18,11 @@ from app.modules.ai.llm import (
     LLM_REQUEST_MAX_MESSAGES,
 )
 from app.modules.regulatory.contracts import RegulatoryEvidence
+from app.modules.regulatory.evidence_sufficiency import EvidenceSufficiencyEvaluator, public_domain_labels
 from app.modules.regulatory.retrieval import RegulatoryRetriever, RegulatoryRetrievalError
 from app.modules.regulatory.verification import ResponseVerificationService, VerificationResult
+from app.modules.ai.pipeline import PipelineStageRecorder
+from app.modules.ai.pipeline_types import EvidenceStatus, PipelineStage
 
 
 SYSTEM_INSTRUCTIONS = """You are RegBridge's regulatory information assistant.
@@ -61,14 +64,15 @@ class RegulatoryAgent(Agent):
     name = "regulatory-agent"
     capabilities = ("regulatory",)
 
-    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
+    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, evaluator: EvidenceSufficiencyEvaluator | None = None, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
         self.retriever = retriever
         self.provider = provider
         self.generation_max_tokens = generation_max_tokens
         self.structured_assessment = structured_assessment
         self.verifier = verifier or ResponseVerificationService(provider=provider, max_tokens=verification_max_tokens)
+        self.evaluator = evaluator or EvidenceSufficiencyEvaluator()
 
-    async def run(self, request: AgentRequest) -> AgentResult:
+    async def run(self, request: AgentRequest, *, pipeline: PipelineStageRecorder | None = None) -> AgentResult:
         if not request.question.strip():
             return self._failure("invalid_question", "A regulatory question is required")
         if requests_assessment_context(request.question) and request.authorized_context.assessment is None:
@@ -77,12 +81,49 @@ class RegulatoryAgent(Agent):
             return self._context_only_result("Aucune roadmap n’a encore été générée pour ce projet.", "roadmap_unavailable")
         if requests_document_context(request.question) and request.authorized_context.document is None and request.authorized_context.contract_analysis is None:
             return self._context_only_result("Sélectionnez un document ou ouvrez une analyse pour poser une question sur ce document.", "document_context_unavailable")
+        if pipeline is not None:
+            await pipeline.start(PipelineStage.RETRIEVING_EVIDENCE)
         try:
             evidence = await self.retriever.retrieve(request.question)
         except RegulatoryRetrievalError:
+            if pipeline is not None:
+                await pipeline.fail(PipelineStage.RETRIEVING_EVIDENCE, error_code="QDRANT_UNAVAILABLE", error_message="Regulatory sources are temporarily unavailable")
             return self._failure("retrieval_unavailable", "Regulatory sources are temporarily unavailable")
-        if not evidence:
-            return self._failure("insufficient_evidence", "No usable regulatory evidence was retrieved")
+        if pipeline is not None:
+            await pipeline.succeed(PipelineStage.RETRIEVING_EVIDENCE, {"retrieved_chunk_count": len(evidence)})
+
+        if pipeline is not None:
+            await pipeline.start(PipelineStage.ASSESSING_EVIDENCE)
+        try:
+            evidence_assessment = self.evaluator.evaluate(request.question, request.authorized_context, evidence)
+        except Exception:
+            if pipeline is not None:
+                await pipeline.fail(PipelineStage.ASSESSING_EVIDENCE, error_code="EVIDENCE_ASSESSMENT_FAILED", error_message="Evidence coverage could not be assessed")
+            return self._failure("evidence_assessment_failed", "Evidence coverage could not be assessed")
+        assessment_payload = _assessment_payload(evidence_assessment)
+        if pipeline is not None:
+            await pipeline.succeed(PipelineStage.ASSESSING_EVIDENCE, assessment_payload)
+        if evidence_assessment.status == EvidenceStatus.INSUFFICIENT:
+            # Preserve the original direct-agent contract for callers that do
+            # not participate in the observable Copilot pipeline. Existing
+            # assessment callers retain their historical generation behavior
+            # when they supplied evidence; an empty retrieval remains a
+            # direct-agent failure. The real Copilot passes a recorder and
+            # receives a safe persisted answer instead.
+            if pipeline is None:
+                if not evidence:
+                    return self._failure("insufficient_evidence", "No usable regulatory evidence was retrieved")
+            else:
+                return AgentResult(
+                    agent_name=self.name,
+                    capability=request.capability,
+                    status="succeeded",
+                    answer="Les sources réglementaires disponibles ne couvrent pas suffisamment cette question. Certains domaines doivent encore être vérifiés.",
+                    sources=_unique_organizations(evidence),
+                    evidence=[item.model_dump() for item in evidence],
+                    warnings=["Les sources disponibles ne permettent pas de répondre de manière fiable sur tous les points."],
+                    structured_payload={"evidence_status": evidence_assessment.status.value, **assessment_payload, "generation_skipped": True},
+                )
 
         evidence_prompt = "\n\n".join(
             f"[EVIDENCE {index}]\nOrganization: {item.organization}\nContent:\n{item.content}"
@@ -92,12 +133,20 @@ class RegulatoryAgent(Agent):
         prompt_version = "scrum184-regulatory-answer-v1"
         draft = None
         try:
-            messages = _generation_messages(request.question, context, evidence_prompt)
+            messages = _generation_messages(
+                request.question,
+                context,
+                evidence_prompt,
+                partial=evidence_assessment.status == EvidenceStatus.PARTIAL,
+                missing_domains=public_domain_labels(evidence_assessment.missing_domains),
+            )
             response_format = None
             if self.structured_assessment:
                 messages[0] = LLMMessage(role="system", content=messages[0].content + "\nReturn the assessment JSON schema. Populate obligations only with requirements supported by the retrieved evidence and applicable to the confirmed facts. Keep recommendations separate. Record missing facts and evidence gaps in missing_information. Do not turn hypothetical applicability into a definite obligation. No technical identifiers in any string.")
                 response_format = {"type":"json_schema", "json_schema":{"name":"AssessmentDraft", "schema":AssessmentDraft.model_json_schema()}}
                 prompt_version = "regulatory-assessment-structured-v1"
+            if pipeline is not None:
+                await pipeline.start(PipelineStage.GENERATING)
             generated = await self.provider.generate(LLMGenerationRequest(
                 messages=messages,
                 max_tokens=self.generation_max_tokens,
@@ -108,8 +157,12 @@ class RegulatoryAgent(Agent):
             if self.structured_assessment:
                 draft = AssessmentDraft.model_validate_json(generated.content)
         except ValidationError:
+            if pipeline is not None:
+                await pipeline.fail(PipelineStage.GENERATING, error_code="INVALID_MODEL_OUTPUT", error_message="The model response did not match the required contract")
             return self._failure("invalid_assessment_output", "The assessment response did not match the required structured contract")
         except RegulatoryPromptTooLarge as exc:
+            if pipeline is not None:
+                await pipeline.fail(PipelineStage.GENERATING, error_code="GENERATION_FAILED", error_message="The regulatory request is too large to process safely")
             return self._failure(
                 "prompt_too_large",
                 "The regulatory request is too large to process safely",
@@ -122,6 +175,9 @@ class RegulatoryAgent(Agent):
                 },
             )
         except LLMProviderError as exc:
+            failure_code = "PROVIDER_RATE_LIMIT" if exc.http_status == 429 else "PROVIDER_UNAVAILABLE"
+            if pipeline is not None:
+                await pipeline.fail(PipelineStage.GENERATING, error_code=failure_code, error_message="The regulatory answer service is temporarily unavailable")
             return self._failure(
                 "generation_unavailable",
                 "The regulatory answer service is temporarily unavailable",
@@ -139,11 +195,15 @@ class RegulatoryAgent(Agent):
                     **_message_metrics(messages),
                 },
             )
+        if pipeline is not None:
+            await pipeline.succeed(PipelineStage.GENERATING, {"provider": generated.execution.provider if generated.execution else None, "model": generated.model})
 
         assessment = request.authorized_context.assessment
         roadmap = request.authorized_context.roadmap
         public_sources = _unique_values([item.organization for item in evidence] + (assessment.sources if assessment else []))
         answer = draft.verification_text() if draft else generated.content
+        if pipeline is not None:
+            await pipeline.start(PipelineStage.VERIFYING)
         verification = await self.verifier.verify(
             question=request.question,
             answer=answer,
@@ -151,6 +211,14 @@ class RegulatoryAgent(Agent):
             public_sources=public_sources,
             cited_evidence_ids=[item.point_id for item in evidence],
         )
+        if pipeline is not None:
+            verification_payload = {"verification_verdict": verification.verdict, "verification_failure_category": verification.technical_failure_category}
+            if verification.technical_failure_category:
+                await pipeline.fail(PipelineStage.VERIFYING, error_code="VERIFICATION_FAILED", error_message="The generated response could not be verified reliably", result=verification_payload)
+            elif verification.verdict == "block":
+                await pipeline.fail(PipelineStage.VERIFYING, error_code="VERIFICATION_BLOCKED", error_message="The generated response was blocked by verification", result=verification_payload)
+            else:
+                await pipeline.succeed(PipelineStage.VERIFYING, verification_payload)
         return AgentResult(
             agent_name=self.name,
             capability=request.capability,
@@ -165,6 +233,8 @@ class RegulatoryAgent(Agent):
                 "retrieval_method": "dense",
                 "embedding_model": "BAAI/bge-m3",
                 "top_k": 5,
+                "evidence_status": evidence_assessment.status.value,
+                **assessment_payload,
                 **_message_metrics(messages),
                 "provider": generated.execution.provider if generated.execution else None,
                 "model": generated.model,
@@ -177,7 +247,10 @@ class RegulatoryAgent(Agent):
                 **_execution_payload("generation", generated.execution),
                 **_verification_payload(verification),
             },
-            warnings=[] if verification.verdict == "pass" else verification.reasons,
+            warnings=([] if verification.verdict == "pass" else verification.reasons) + (
+                ["Les sources disponibles permettent de répondre sur certains points, mais la couverture est incomplète."]
+                if evidence_assessment.status == EvidenceStatus.PARTIAL else []
+            ),
         )
 
     @staticmethod
@@ -271,17 +344,20 @@ def _partition_labeled(label: str, value: str) -> list[LLMMessage]:
     return messages
 
 
-def _generation_messages(question: str, context: str, evidence: str) -> list[LLMMessage]:
+def _generation_messages(question: str, context: str, evidence: str, *, partial: bool = False, missing_domains: list[str] | None = None) -> list[LLMMessage]:
     """Build the generation request within the shared LLM size contract."""
 
     combined = f"USER QUESTION\n{question}\n\nAUTHORIZED PROJECT CONTEXT\n{context}\n\nRETRIEVED REGULATORY EVIDENCE\n{evidence}"
+    partial_instruction = ""
+    if partial:
+        partial_instruction = "\nCoverage is partial. Answer only the points supported by retrieved evidence. Explicitly state that these areas still need verification: " + ", ".join(missing_domains or []) + ". Never fill these gaps from model knowledge."
     if len(combined) <= LLM_MESSAGE_MAX_CHARS:
         return [
-            LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS),
+            LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS + partial_instruction),
             LLMMessage(role="user", content=combined),
         ]
 
-    messages = [LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS)]
+    messages = [LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS + partial_instruction)]
     messages.extend(_partition_labeled("USER QUESTION", question))
     messages.extend(_partition_labeled("AUTHORIZED PROJECT CONTEXT", context))
     messages.extend(_partition_labeled("RETRIEVED REGULATORY EVIDENCE", evidence))
@@ -295,6 +371,19 @@ def _message_metrics(messages: list[LLMMessage]) -> dict[str, int]:
         "generation_message_count": len(messages),
         "generation_max_message_chars": max(len(message.content) for message in messages),
         "generation_total_prompt_chars": sum(len(message.content) for message in messages),
+    }
+
+
+def _assessment_payload(assessment) -> dict[str, str | int | float | bool | None]:
+    """Flatten the deterministic result for the scalar-only trace allowlist."""
+    return {
+        "evidence_status": assessment.status.value,
+        "required_domains": ", ".join(assessment.required_domains),
+        "covered_domains": ", ".join(assessment.covered_domains),
+        "missing_domains": ", ".join(assessment.missing_domains),
+        "useful_evidence_count": assessment.useful_evidence_count,
+        "total_evidence_count": assessment.total_evidence_count,
+        "domain_reasons": " | ".join(f"{domain}: {reason}" for domain, reason in assessment.domain_reasons.items())[:1800],
     }
 
 

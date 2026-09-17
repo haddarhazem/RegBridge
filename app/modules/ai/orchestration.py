@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from typing import Protocol
 
 from app.modules.ai.agents import Agent, AgentRegistry
@@ -16,6 +17,8 @@ from app.modules.ai.contracts import (
 )
 from app.modules.ai.schemas import AgentRunRequestTrace, AgentRunResponseTrace, TraceResourceRef, TraceSourceRef
 from app.modules.ai.services import AgentRunService
+from app.modules.ai.pipeline import PipelineStageRecorder
+from app.modules.ai.pipeline_types import PipelineStage
 from app.core.observability import emit_event
 
 
@@ -172,12 +175,35 @@ class Orchestrator:
                 await self.agent_run_service.succeed_run(root_id, self._root_trace(outcome))
                 return outcome
 
+            # Pipeline stages are Copilot operational traces.  Keep unrelated
+            # orchestration callers on the established SCRUM-182 root/agent
+            # hierarchy without manufacturing conversational stages.
+            pipeline_enabled = (
+                isinstance(self.agent_run_service, AgentRunService)
+                and request.conversation_id is not None
+                and any("pipeline" in inspect.signature(selection.agent.run).parameters for selection in selections)
+            )
+            pipeline = (
+                PipelineStageRecorder(self.agent_run_service, request, parent_run_id=root_id)
+                if pipeline_enabled
+                else None
+            )
+            if pipeline is not None:
+                await pipeline.start(PipelineStage.CONTEXT_BUILDING)
             try:
                 context = await self.context_builder.build(request, capabilities)
             except ContextAuthorizationError:
+                if pipeline is not None:
+                    await pipeline.fail(PipelineStage.CONTEXT_BUILDING, error_code="CONTEXT_AUTHORIZATION_FAILED", error_message="Project context access denied")
                 outcome = OrchestrationResult(request_id=request.request_id, status="unauthorized", selected_capabilities=capabilities, warnings=["Context authorization denied"])
                 await self.agent_run_service.fail_run(root_id, error_code="authorization_denied", error_message="Project context access denied")
-                return outcome
+                return outcome.model_copy(update={"root_run_id": root_id})
+            except Exception:
+                if pipeline is not None:
+                    await pipeline.fail(PipelineStage.CONTEXT_BUILDING, error_code="CONTEXT_BUILD_FAILED", error_message="Project context could not be prepared")
+                raise
+            if pipeline is not None:
+                await pipeline.succeed(PipelineStage.CONTEXT_BUILDING)
 
             successes: list[AgentResult] = []
             failures: list[AgentResult] = []
@@ -196,7 +222,11 @@ class Orchestrator:
                     authorized_context=context,
                 )
                 try:
-                    raw_result = await agent.run(agent_request)
+                    agent_pipeline = PipelineStageRecorder(self.agent_run_service, request, parent_run_id=child_id) if pipeline is not None else None
+                    if agent_pipeline is not None and "pipeline" in inspect.signature(agent.run).parameters:
+                        raw_result = await agent.run(agent_request, pipeline=agent_pipeline)
+                    else:
+                        raw_result = await agent.run(agent_request)
                     if not isinstance(raw_result, AgentResult):
                         raise AgentContractError("Agent must return AgentResult")
                     result = raw_result.model_copy(update={"run_id": child_id})
@@ -224,7 +254,7 @@ class Orchestrator:
                     failures.append(failure)
                     await self.agent_run_service.fail_run(child_id, error_code=failure.error_code or "agent_execution_failed", error_message="Agent execution failed")
 
-            outcome = self.aggregator.aggregate(request, capabilities, successes, failures)
+            outcome = self.aggregator.aggregate(request, capabilities, successes, failures).model_copy(update={"root_run_id": root_id, "pipeline_active": pipeline_enabled})
             emit_event("orchestration.completed", component="orchestrator", operation="run", status=outcome.status, result_count=len(successes), failure_count=len(failures))
             await self.agent_run_service.succeed_run(root_id, self._root_trace(outcome))
             return outcome
@@ -234,6 +264,14 @@ class Orchestrator:
             except ValueError:
                 pass
             raise
+
+    async def complete_copilot_turn(self, request: OrchestrationRequest, root_run_id, *, pipeline_active: bool = False) -> None:
+        """Record completion only after the assistant message is durably persisted."""
+        if not isinstance(self.agent_run_service, AgentRunService) or root_run_id is None or request.conversation_id is None or not pipeline_active:
+            return
+        recorder = PipelineStageRecorder(self.agent_run_service, request, parent_run_id=root_run_id)
+        await recorder.start(PipelineStage.COMPLETED)
+        await recorder.succeed(PipelineStage.COMPLETED)
 
     @staticmethod
     def _root_trace(result: OrchestrationResult) -> AgentRunResponseTrace:

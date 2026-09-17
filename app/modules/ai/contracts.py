@@ -96,7 +96,7 @@ class AgentResult(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     warnings: list[str] = Field(default_factory=list, max_length=50)
     artifacts: list[str] = Field(default_factory=list, max_length=50)
-    structured_payload: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=50)
+    structured_payload: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=70)
     evidence: list[dict[str, str | int | float | None]] = Field(default_factory=list, max_length=5)
     run_id: uuid.UUID | None = None
     error_code: str | None = Field(default=None, max_length=80)
@@ -112,3 +112,5 @@ class OrchestrationResult(BaseModel):
     failures: list[AgentResult] = Field(default_factory=list, max_length=20)
     provenance: list[str] = Field(default_factory=list, max_length=50)
     warnings: list[str] = Field(default_factory=list, max_length=50)
+    root_run_id: uuid.UUID | None = None
+    pipeline_active: bool = False

@@ -8,8 +8,10 @@ from starlette.concurrency import run_in_threadpool
 from app.db.session import get_session
 from app.modules.ai.copilot import ProjectCopilotService
 from app.modules.ai.llm import LLMConfigurationError
-from app.modules.ai.schemas import CopilotTurnResponse, ConversationCreate, ConversationResponse, MessageCreate, MessageResponse
+from app.modules.ai.schemas import CopilotDiagnosticsResponse, CopilotRequestStatusResponse, CopilotStageResponse, CopilotTurnResponse, ConversationCreate, ConversationResponse, MessageCreate, MessageResponse
 from app.modules.ai.services import ConversationService
+from app.modules.ai.pipeline_types import EvidenceStatus, PipelineStage
+from app.core.config import get_settings
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.core.request_id import get_request_id
@@ -44,8 +46,20 @@ async def create_conversation(data: ConversationCreate, principal: Principal, se
 
 
 @router.get("", response_model=list[ConversationResponse])
-async def list_conversations(principal: Principal, session: Session) -> list[ConversationResponse]:
-    return [_conversation_response(thread) for thread in await ConversationService(session).list_threads(principal)]
+async def list_conversations(
+    principal: Principal,
+    session: Session,
+    subject_type: str | None = None,
+    subject_id: uuid.UUID | None = None,
+) -> list[ConversationResponse]:
+    return [
+        _conversation_response(thread)
+        for thread in await ConversationService(session).list_threads(
+            principal,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+    ]
 
 
 @router.get("/{thread_id}", response_model=ConversationResponse)
@@ -83,4 +97,62 @@ async def create_copilot_response(request: Request, thread_id: uuid.UUID, data: 
         sources=turn.sources,
         references=turn.references,
         warnings=turn.warnings,
+    )
+
+
+def _stage_payload(run, stage: PipelineStage) -> dict:
+    payload = run.response_payload or {}
+    return payload.get("result", {}) if isinstance(payload, dict) else {}
+
+
+@router.get("/{thread_id}/requests/{request_id}/status", response_model=CopilotRequestStatusResponse)
+async def get_copilot_request_status(thread_id: uuid.UUID, request_id: uuid.UUID, principal: Principal, session: Session) -> CopilotRequestStatusResponse:
+    """Return safe progress only after conversation and active-membership authorization."""
+    thread = await ConversationService(session).get_thread(principal, thread_id)
+    message_ids = {message.id for message in thread.messages}
+    from app.modules.ai.services import AgentRunService
+    runs = await AgentRunService(session).get_request_trace(request_id)
+    runs = [run for run in runs if run.user_id == principal.user_id and run.message_id in message_ids and run.subject_type == thread.subject_type and run.subject_id == thread.subject_id]
+    if not runs:
+        raise HTTPException(status_code=404, detail="Copilot request not found")
+    stage_runs = {run.capability.upper(): run for run in runs if run.agent_name == "copilot-pipeline"}
+    ordered = [PipelineStage.CONTEXT_BUILDING, PipelineStage.RETRIEVING_EVIDENCE, PipelineStage.ASSESSING_EVIDENCE, PipelineStage.GENERATING, PipelineStage.VERIFYING]
+    stages: list[CopilotStageResponse] = []
+    for stage in ordered:
+        run = stage_runs.get(stage.value)
+        if run is None:
+            stages.append(CopilotStageResponse(stage=stage, status="not_started"))
+            continue
+        duration = ((run.completed_at or run.started_at) - run.started_at).total_seconds() * 1000
+        stages.append(CopilotStageResponse(stage=stage, status=run.status, duration_ms=round(max(duration, 0), 3)))
+    failed = next((stage for stage in ordered if (run := stage_runs.get(stage.value)) is not None and run.status == "failed"), None)
+    completed = stage_runs.get(PipelineStage.COMPLETED.value)
+    cancelled = any(run.status == "cancelled" for run in stage_runs.values())
+    current = PipelineStage.CANCELLED if cancelled else PipelineStage.FAILED if failed else PipelineStage.COMPLETED if completed else next((stage for stage in reversed(ordered) if stage_runs.get(stage.value) is not None and stage_runs[stage.value].status == "running"), PipelineStage.CONTEXT_BUILDING)
+    status_value = "cancelled" if cancelled else "failed" if failed else "completed" if completed else "running"
+    assessment = _stage_payload(stage_runs.get(PipelineStage.ASSESSING_EVIDENCE), PipelineStage.ASSESSING_EVIDENCE) if stage_runs.get(PipelineStage.ASSESSING_EVIDENCE) else {}
+    evidence_status = assessment.get("evidence_status")
+    try:
+        evidence_value = EvidenceStatus(evidence_status) if evidence_status else None
+    except ValueError:
+        evidence_value = None
+    failed_run = stage_runs.get(failed.value) if failed else None
+    started = min(run.started_at for run in runs)
+    completed_at = completed.completed_at if completed else (failed_run.completed_at if failed_run else None)
+    diagnostics = None
+    if get_settings().copilot_developer_diagnostics_enabled:
+        retrieval = _stage_payload(stage_runs.get(PipelineStage.RETRIEVING_EVIDENCE), PipelineStage.RETRIEVING_EVIDENCE) if stage_runs.get(PipelineStage.RETRIEVING_EVIDENCE) else {}
+        generating = _stage_payload(stage_runs.get(PipelineStage.GENERATING), PipelineStage.GENERATING) if stage_runs.get(PipelineStage.GENERATING) else {}
+        verifying = _stage_payload(stage_runs.get(PipelineStage.VERIFYING), PipelineStage.VERIFYING) if stage_runs.get(PipelineStage.VERIFYING) else {}
+        diagnostics = CopilotDiagnosticsResponse(
+            required_domains=[item for item in str(assessment.get("required_domains") or "").split(", ") if item],
+            covered_domains=[item for item in str(assessment.get("covered_domains") or "").split(", ") if item],
+            missing_domains=[item for item in str(assessment.get("missing_domains") or "").split(", ") if item],
+            retrieved_chunk_count=retrieval.get("retrieved_chunk_count"), provider=generating.get("provider"), model=generating.get("model"),
+            verification_verdict=verifying.get("verification_verdict"), failure_code=failed_run.error_code if failed_run else None,
+        )
+    return CopilotRequestStatusResponse(
+        request_id=request_id, status=status_value, current_stage=current, evidence_status=evidence_value,
+        started_at=started, updated_at=max((run.completed_at or run.started_at) for run in runs), completed_at=completed_at,
+        failure_stage=failed, failure_code=failed_run.error_code if failed_run else None, stages=stages, diagnostics=diagnostics,
     )

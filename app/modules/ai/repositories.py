@@ -23,11 +23,23 @@ class ConversationRepository:
     async def get_owned_thread(self, thread_id: uuid.UUID, user_id: uuid.UUID) -> ConversationThread | None:
         return await self.session.scalar(select(ConversationThread).where(ConversationThread.id == thread_id, ConversationThread.user_id == user_id))
 
-    async def list_threads_for_user(self, user_id: uuid.UUID) -> list[ConversationThread]:
+    async def list_threads_for_user(
+        self,
+        user_id: uuid.UUID,
+        *,
+        subject_type: str | None = None,
+        subject_id: uuid.UUID | None = None,
+    ) -> list[ConversationThread]:
+        statement = select(ConversationThread).where(
+            ConversationThread.user_id == user_id,
+            ConversationThread.status != "deleted",
+        )
+        if subject_type is not None:
+            statement = statement.where(ConversationThread.subject_type == subject_type)
+        if subject_id is not None:
+            statement = statement.where(ConversationThread.subject_id == subject_id)
         result = await self.session.scalars(
-            select(ConversationThread)
-            .where(ConversationThread.user_id == user_id, ConversationThread.status != "deleted")
-            .order_by(ConversationThread.updated_at.desc(), ConversationThread.id.asc())
+            statement.order_by(ConversationThread.updated_at.desc(), ConversationThread.id.asc())
         )
         return list(result.all())
 

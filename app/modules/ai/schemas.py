@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.ai.pipeline_types import EvidenceStatus, PipelineStage
+
 
 class ConversationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -70,6 +72,43 @@ class CopilotTurnResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=10)
 
 
+class CopilotStageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: PipelineStage
+    status: Literal["not_started", "running", "succeeded", "failed", "cancelled"]
+    duration_ms: float | None = Field(default=None, ge=0)
+
+
+class CopilotDiagnosticsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    required_domains: list[str] = Field(default_factory=list, max_length=6)
+    covered_domains: list[str] = Field(default_factory=list, max_length=6)
+    missing_domains: list[str] = Field(default_factory=list, max_length=6)
+    retrieved_chunk_count: int | None = Field(default=None, ge=0, le=5)
+    provider: str | None = Field(default=None, max_length=80)
+    model: str | None = Field(default=None, max_length=120)
+    verification_verdict: str | None = Field(default=None, max_length=40)
+    failure_code: str | None = Field(default=None, max_length=80)
+
+
+class CopilotRequestStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: uuid.UUID
+    status: Literal["running", "completed", "failed", "cancelled"]
+    current_stage: PipelineStage
+    evidence_status: EvidenceStatus | None = None
+    started_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+    failure_stage: PipelineStage | None = None
+    failure_code: str | None = Field(default=None, max_length=80)
+    stages: list[CopilotStageResponse] = Field(default_factory=list, max_length=7)
+    diagnostics: CopilotDiagnosticsResponse | None = None
+
+
 class TraceResourceRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -108,7 +147,7 @@ class AgentRunResponseTrace(BaseModel):
 
     schema_version: str = Field(default="1", max_length=40)
     summary: str | None = Field(default=None, max_length=2000)
-    result: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=50)
+    result: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=70)
     source_refs: list[TraceSourceRef] = Field(default_factory=list, max_length=50)
 
 

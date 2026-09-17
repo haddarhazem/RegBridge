@@ -1,0 +1,20 @@
+"""Dependency-light typed values shared by Copilot pipeline contracts."""
+
+from enum import StrEnum
+
+
+class PipelineStage(StrEnum):
+    CONTEXT_BUILDING = "CONTEXT_BUILDING"
+    RETRIEVING_EVIDENCE = "RETRIEVING_EVIDENCE"
+    ASSESSING_EVIDENCE = "ASSESSING_EVIDENCE"
+    GENERATING = "GENERATING"
+    VERIFYING = "VERIFYING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class EvidenceStatus(StrEnum):
+    SUFFICIENT = "SUFFICIENT"
+    PARTIAL = "PARTIAL"
+    INSUFFICIENT = "INSUFFICIENT"

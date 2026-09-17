@@ -48,8 +48,20 @@ class ConversationService:
         await self.session.commit()
         return thread
 
-    async def list_threads(self, actor: AuthenticatedPrincipal) -> list[ConversationThread]:
-        threads = await self.repository.list_threads_for_user(actor.user_id)
+    async def list_threads(
+        self,
+        actor: AuthenticatedPrincipal,
+        *,
+        subject_type: str | None = None,
+        subject_id: uuid.UUID | None = None,
+    ) -> list[ConversationThread]:
+        if subject_type not in {None, "project"} or (subject_type is None) != (subject_id is None):
+            raise HTTPException(status_code=422, detail="Conversation subject filter is invalid")
+        threads = await self.repository.list_threads_for_user(
+            actor.user_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
         authorized: list[ConversationThread] = []
         for thread in threads:
             try:

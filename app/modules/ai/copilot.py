@@ -46,7 +46,7 @@ class ProjectCopilotService:
             )
 
         user_message = await self.conversations.add_user_message(actor, thread.id, content)
-        outcome = await self.orchestrator.run(OrchestrationRequest(
+        orchestration_request = OrchestrationRequest(
             request_id=request_id or uuid.uuid4(),
             conversation_id=thread.id,
             message_id=user_message.id,
@@ -59,7 +59,8 @@ class ProjectCopilotService:
             context_analysis_id=analysis_id,
             intent_hint="regulatory",
             locale="fr",
-        ))
+        )
+        outcome = await self.orchestrator.run(orchestration_request)
         if outcome.status == "unauthorized":
             raise HTTPException(status_code=404, detail="Project context not found")
 
@@ -99,6 +100,10 @@ class ProjectCopilotService:
         public_warnings: list[str] = []
         if outcome.status == "partial":
             public_warnings.append("Une partie de l’analyse n’a pas pu être réalisée.")
+        if outcome.results:
+            public_warnings.extend(outcome.results[0].warnings)
+        if outcome.results and outcome.results[0].structured_payload.get("evidence_status") == "PARTIAL":
+            public_warnings.append("La couverture des sources est partielle. Les points non couverts sont signalés dans la réponse.")
         if outcome.results and outcome.results[0].structured_payload.get("verification_verdict") != "pass":
             public_warnings.append("Certains éléments n’ont pas pu être vérifiés avec une fiabilité suffisante.")
         assistant_message = await self.conversations.add_internal_message(
@@ -113,6 +118,7 @@ class ProjectCopilotService:
                 "orchestration_status": outcome.status,
             },
         )
+        await self.orchestrator.complete_copilot_turn(orchestration_request, outcome.root_run_id, pipeline_active=outcome.pipeline_active)
         return CopilotTurn(
             user_message=user_message,
             assistant_message=assistant_message,
