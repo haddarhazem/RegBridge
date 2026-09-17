@@ -121,32 +121,291 @@ async def run(stage):
                 await ready(page)
             record['project_id'] = project['id']
             record['project_type'] = project['project_type']
-            if stage in ('setup', 'regulatory', 'roadmap', 'all'):
+            if project['project_type'] != 'idea':
+                await nav(page, 'dashboard')
+                record['dashboard_idea_only_actions'] = await page.locator('[data-action="open-onboarding"]').count()
+                assert record['dashboard_idea_only_actions'] == 0
+            if stage == 'recovery':
+                question = 'Quelles sont les principales obligations réglementaires pour mon projet en France ?'
+                drawer = page.locator('[data-copilot-drawer]')
+                await page.locator('[data-open-copilot]').click()
+                await expect(drawer).to_have_attribute('role', 'complementary')
+                await expect(drawer).not_to_have_attribute('aria-modal', 'true')
+                await page.wait_for_timeout(300)
+                frame_box = await page.locator('.app-frame').bounding_box()
+                drawer_box = await drawer.bounding_box()
+                record['docked'] = {
+                    'width': drawer_box['width'] if drawer_box else None,
+                    'workspace_reflowed': bool(frame_box and drawer_box and frame_box['x'] + frame_box['width'] <= drawer_box['x'] + 1),
+                    'role': await drawer.get_attribute('role'),
+                    'aria_modal': await drawer.get_attribute('aria-modal'),
+                }
+
+                response_count_before = sum(item['method'] == 'POST' and item['path'].endswith('/responses') for item in record['http'])
+                await page.locator('#copilot-question').fill(question)
+                async with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/responses'), timeout=300_000) as response:
+                    await page.locator('[data-submit-copilot]').click()
+                    await expect(page.locator('[data-copilot-messages]')).to_contain_text(question)
+                    await expect(page.locator('[data-copilot-generating]')).to_be_visible()
+                copilot_response = await response.value
+                copilot_payload = await copilot_response.json()
+                conversation_match = re.search(r'/conversations/([0-9a-f-]+)/responses$', urlsplit(copilot_response.url).path)
+                conversation_id = conversation_match.group(1) if conversation_match else None
+                assistant_content = copilot_payload.get('assistant_message', {}).get('content', '') if isinstance(copilot_payload, dict) else ''
+                await expect(page.locator('[data-copilot-generating]')).to_be_hidden()
+                await expect(page.locator('[data-submit-copilot]')).to_be_enabled()
+                record['copilot'] = {
+                    'http': copilot_response.status,
+                    'conversation_id': conversation_id,
+                    'orchestration_status': copilot_payload.get('orchestration_status') if isinstance(copilot_payload, dict) else None,
+                    'warnings': copilot_payload.get('warnings') if isinstance(copilot_payload, dict) else None,
+                    'answer_chars': len(assistant_content),
+                    'frontend_error': (await page.locator('[data-copilot-error]').text_content() or '').strip(),
+                    'loading_cleared': await page.locator('[data-copilot-generating]').is_hidden(),
+                    'input_enabled': await page.locator('[data-submit-copilot]').is_enabled(),
+                }
+                if assistant_content:
+                    await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+
+                await nav(page, 'roadmap')
+                record['navigation'] = {
+                    'roadmap_open': 'copilot-open' in (await page.locator('body').get_attribute('class') or ''),
+                    'roadmap_conversation_preserved': not assistant_content or assistant_content in (await page.locator('[data-copilot-messages]').inner_text()),
+                }
+                await nav(page, 'regulatory')
+                record['navigation']['regulatory_open'] = 'copilot-open' in (await page.locator('body').get_attribute('class') or '')
+                record['navigation']['regulatory_conversation_preserved'] = not assistant_content or assistant_content in (await page.locator('[data-copilot-messages]').inner_text())
+
+                assessment_button = page.locator('[data-action="generate-assessment"]')
+                async with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/assessments'), timeout=300_000) as response:
+                    await assessment_button.click()
+                    await expect(assessment_button).to_be_disabled()
+                assessment_response = await response.value
+                assessment_payload = await assessment_response.json()
+                await ready(page)
+                assessment_result = assessment_payload.get('result', {}) if isinstance(assessment_payload, dict) else {}
+                record['assessment'] = {
+                    'http': assessment_response.status,
+                    'id': assessment_payload.get('id'),
+                    'version': assessment_payload.get('version'),
+                    'status': assessment_payload.get('status'),
+                    'verification_verdict': assessment_payload.get('verification_verdict'),
+                    'verification_reasons': assessment_payload.get('verification_reasons'),
+                    'counts': {key: len(assessment_result.get(key, [])) for key in ('obligations', 'recommendations', 'uncertainties', 'sources')},
+                    'frontend_error': (await page.locator('.toast-error').text_content() or '').strip() if await page.locator('.toast-error').count() else '',
+                }
+                record['navigation']['assessment_copilot_open'] = 'copilot-open' in (await page.locator('body').get_attribute('class') or '')
+                record['navigation']['assessment_conversation_preserved'] = not assistant_content or assistant_content in (await page.locator('[data-copilot-messages]').inner_text())
+                if assessment_payload.get('status') == 'completed':
+                    await expect(page.locator('[data-workspace]')).to_contain_text(f"Version {assessment_payload['version']}")
+                    for heading in ('Obligations identifiées', 'Actions recommandées', 'Points à vérifier', 'Sources'):
+                        await expect(page.locator('[data-workspace]')).to_contain_text(heading)
+
+                # Make the just-completed turn historical explicitly, then restore it.
+                if conversation_id and assistant_content:
+                    await page.locator('[data-new-copilot]').click()
+                    await expect(page.locator('[data-copilot-messages]')).not_to_contain_text(assistant_content)
+                    async with page.expect_response(lambda r: r.request.method == 'GET' and urlsplit(r.url).path == '/conversations'):
+                        await page.locator('[data-show-copilot-history]').click()
+                    await expect(page.locator('[data-copilot-history]')).to_be_visible()
+                    history_entries = page.locator('[data-copilot-thread]')
+                    project_threads = await page.evaluate('(id) => window.RegBridgeEntrepreneurApi.conversations(id)', project['id'])
+                    record['history'] = {
+                        'count': await history_entries.count(),
+                        'all_project_scoped': bool(project_threads) and all(item.get('subject_type') == 'project' and item.get('subject_id') == project['id'] for item in project_threads),
+                        'contains_current': any(item.get('id') == conversation_id for item in project_threads),
+                    }
+                    historical = page.locator(f'[data-copilot-thread="{conversation_id}"]')
+                    async with page.expect_response(lambda r: r.request.method == 'GET' and urlsplit(r.url).path == f'/conversations/{conversation_id}'):
+                        await historical.click()
+                    await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                    record['history']['messages_restored'] = True
+                    provider_requests = sum(item['method'] == 'POST' and item['path'].endswith('/responses') for item in record['http'])
+                    await page.locator('[data-expand-copilot]').click()
+                    await expect(drawer).to_have_attribute('role', 'dialog')
+                    await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                    await page.locator('[data-expand-copilot]').click()
+                    await expect(drawer).to_have_attribute('role', 'complementary')
+                    await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                    record['fullscreen'] = {
+                        'same_conversation': True,
+                        'extra_provider_requests': sum(item['method'] == 'POST' and item['path'].endswith('/responses') for item in record['http']) - provider_requests,
+                    }
+                    await page.locator('[data-close-copilot]').click()
+                    await expect(drawer).to_have_attribute('aria-hidden', 'true')
+                    await page.locator('[data-open-copilot]').click()
+                    await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                    record['close_reopen_preserved'] = True
+                    await page.locator('[data-new-copilot]').click()
+                    await expect(page.locator('[data-copilot-messages]')).not_to_contain_text(assistant_content)
+                    record['history']['new_conversation_clean'] = True
+                else:
+                    record['history'] = {'count': 0, 'all_project_scoped': False, 'contains_current': False, 'messages_restored': False, 'new_conversation_clean': False}
+                    record['fullscreen'] = {'same_conversation': False, 'extra_provider_requests': None}
+                    record['close_reopen_preserved'] = False
+
+                record['copilot']['response_requests'] = sum(item['method'] == 'POST' and item['path'].endswith('/responses') for item in record['http']) - response_count_before
+                await page.screenshot(path=str(OUT / 'demo-recovery-docked.png'), animations='disabled')
+
+                # Accepted roadmap behavior gets only the requested persistence smoke.
+                await page.locator('[data-close-copilot]').click()
+                await nav(page, 'roadmap')
+                roadmap_status = page.locator('[data-roadmap-item]').first
+                record['roadmap_smoke'] = {'available': await roadmap_status.count() > 0, 'persisted': False}
+                if record['roadmap_smoke']['available']:
+                    current_status = await roadmap_status.input_value()
+                    expected_status = 'in_progress' if current_status != 'in_progress' else 'completed'
+                    async with page.expect_response(lambda r: r.request.method == 'PATCH' and '/roadmaps/' in r.url):
+                        await roadmap_status.select_option(expected_status)
+                    await quiet(page)
+                    await page.reload()
+                    await ready(page)
+                    await expect(page.locator('[data-roadmap-item]').first).to_have_value(expected_status)
+                    record['roadmap_smoke']['persisted'] = True
+
+                assert copilot_response.status == 201 and assistant_content
+                assert copilot_payload.get('orchestration_status') == 'succeeded' and not copilot_payload.get('warnings')
+                assert record['copilot']['response_requests'] == 1
+                assert assessment_response.status == 200
+                assert assessment_payload.get('status') == 'completed'
+                assert assessment_payload.get('verification_verdict') in ('pass', 'pass_with_warnings')
+                assert assessment_result.get('obligations') and assessment_result.get('recommendations') and assessment_result.get('sources')
+                assert all(record['navigation'].values())
+                assert record['docked']['workspace_reflowed'] and 400 <= record['docked']['width'] <= 480
+                assert record['history']['all_project_scoped'] and record['history']['contains_current'] and record['history']['messages_restored']
+                assert record['history']['new_conversation_clean'] and record['fullscreen']['same_conversation']
+                assert record['fullscreen']['extra_provider_requests'] == 0 and record['close_reopen_preserved']
+                assert record['roadmap_smoke']['persisted']
+            if stage == 'recovery-ui':
+                drawer = page.locator('[data-copilot-drawer]')
+                response_requests_before = sum(item['method'] == 'POST' and item['path'].endswith('/responses') for item in record['http'])
+                await page.locator('[data-open-copilot]').click()
+                await expect(drawer).to_have_attribute('role', 'complementary')
+                await expect(drawer).not_to_have_attribute('aria-modal', 'true')
+                await page.wait_for_timeout(300)
+                frame_box = await page.locator('.app-frame').bounding_box()
+                drawer_box = await drawer.bounding_box()
+                record['docked'] = {
+                    'width': drawer_box['width'] if drawer_box else None,
+                    'workspace_reflowed': bool(frame_box and drawer_box and frame_box['x'] + frame_box['width'] <= drawer_box['x'] + 1),
+                    'old_thread_auto_opened': bool(await page.locator('.copilot-message').count()),
+                }
+                async with page.expect_response(lambda r: r.request.method == 'GET' and urlsplit(r.url).path == '/conversations'):
+                    await page.locator('[data-show-copilot-history]').click()
+                await expect(page.locator('[data-copilot-history]')).to_be_visible()
+                project_threads = await page.evaluate('(id) => window.RegBridgeEntrepreneurApi.conversations(id)', project['id'])
+                restored = None
+                for item in project_threads:
+                    candidate = await page.evaluate('(id) => window.RegBridgeEntrepreneurApi.conversation(id)', item['id'])
+                    if any(message.get('role') == 'assistant' and message.get('content') for message in candidate.get('messages', [])):
+                        restored = candidate
+                        break
+                assert restored is not None, 'No existing persisted EnerSight assistant thread is available for history acceptance'
+                assistant_content = next(message['content'] for message in restored['messages'] if message.get('role') == 'assistant' and message.get('content'))
+                historical = page.locator(f'[data-copilot-thread="{restored["id"]}"]')
+                async with page.expect_response(lambda r: r.request.method == 'GET' and urlsplit(r.url).path == f'/conversations/{restored["id"]}'):
+                    await historical.click()
+                await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                record['history'] = {
+                    'count': len(project_threads),
+                    'all_project_scoped': bool(project_threads) and all(item.get('subject_type') == 'project' and item.get('subject_id') == project['id'] for item in project_threads),
+                    'restored_thread_id': restored['id'],
+                    'message_count': len(restored['messages']),
+                    'messages_restored': True,
+                }
+
+                draft = 'Brouillon de navigation — ne pas envoyer'
+                await page.locator('#copilot-question').fill(draft)
+                record['navigation'] = {}
+                for view in ('roadmap', 'regulatory', 'contracts'):
+                    await nav(page, view)
+                    record['navigation'][view] = {
+                        'copilot_open': 'copilot-open' in (await page.locator('body').get_attribute('class') or ''),
+                        'conversation_preserved': assistant_content in (await page.locator('[data-copilot-messages]').inner_text()),
+                        'draft_preserved': await page.locator('#copilot-question').input_value() == draft,
+                        'workspace_visible': await page.locator('[data-workspace] h1').is_visible(),
+                    }
+
+                await page.locator('[data-expand-copilot]').click()
+                await expect(drawer).to_have_attribute('role', 'dialog')
+                await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                await page.locator('[data-expand-copilot]').click()
+                await expect(drawer).to_have_attribute('role', 'complementary')
+                await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                await page.locator('[data-close-copilot]').click()
+                await expect(drawer).to_have_attribute('aria-hidden', 'true')
+                await page.locator('[data-open-copilot]').click()
+                await expect(page.locator('[data-copilot-messages]')).to_contain_text(assistant_content)
+                record['presentation'] = {
+                    'fullscreen_same_thread': True,
+                    'reduce_same_thread': True,
+                    'close_reopen_same_thread': True,
+                    'extra_provider_requests': sum(item['method'] == 'POST' and item['path'].endswith('/responses') for item in record['http']) - response_requests_before,
+                }
+                await page.locator('[data-new-copilot]').click()
+                await expect(page.locator('[data-copilot-messages]')).not_to_contain_text(assistant_content)
+                record['history']['new_conversation_clean'] = True
+                await page.screenshot(path=str(OUT / 'demo-recovery-ui-docked.png'), animations='disabled')
+
+                await page.locator('[data-close-copilot]').click()
+                await nav(page, 'roadmap')
+                roadmap_status = page.locator('[data-roadmap-item]').first
+                record['roadmap_smoke'] = {'available': await roadmap_status.count() > 0, 'persisted': False}
+                if record['roadmap_smoke']['available']:
+                    await roadmap_status.locator('xpath=ancestor::details/summary').click()
+                    current_status = await roadmap_status.input_value()
+                    expected_status = 'in_progress' if current_status != 'in_progress' else 'completed'
+                    async with page.expect_response(lambda r: r.request.method == 'PATCH' and '/roadmaps/' in r.url):
+                        await roadmap_status.select_option(expected_status)
+                    await quiet(page)
+                    await page.reload()
+                    await ready(page)
+                    await expect(page.locator('[data-roadmap-item]').first).to_have_value(expected_status)
+                    record['roadmap_smoke']['persisted'] = True
+
+                assert record['docked']['workspace_reflowed'] and 400 <= record['docked']['width'] <= 480
+                assert not record['docked']['old_thread_auto_opened']
+                assert record['history']['all_project_scoped'] and record['history']['messages_restored'] and record['history']['new_conversation_clean']
+                assert all(all(item.values()) for item in record['navigation'].values())
+                assert record['presentation']['extra_provider_requests'] == 0
+                assert record['roadmap_smoke']['persisted']
+            if stage in ('setup', 'regulatory', 'roadmap', 'all', 'presentation'):
                 # The six demo declarations are explicit; discard redundant machine
                 # proposals through the same review controls available to the user.
                 await nav(page, 'project')
                 await page.locator('[data-tab="facts"]').click()
                 await ready(page)
+                if project['project_type'] != 'idea':
+                    record['startup_idea_only_actions'] = await page.locator('[data-action="infer-facts"], [data-action="open-onboarding"]').count()
+                    assert record['startup_idea_only_actions'] == 0
                 while await page.locator('[data-action="reject-fact"]').count():
                     async with page.expect_response(lambda r:r.request.method=='DELETE' and '/facts/' in r.url):
                         await page.locator('[data-action="reject-fact"]').first.click()
                     await ready(page)
                 await nav(page, 'roadmap')
-                record['roadmap_prerequisite_visible'] = 'Réglementation' in await page.locator('[data-workspace]').inner_text()
-                await nav(page, 'regulatory')
-                if stage not in ('roadmap','all'):
+                record['roadmap_action_available'] = await page.locator('[data-action="generate-roadmap"]').count() > 0
+                assert record['roadmap_action_available']
+                payload = None
+                if stage not in ('roadmap', 'presentation'):
+                    await nav(page, 'regulatory')
                     async with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/assessments'), timeout=240_000) as response:
                         await page.locator('[data-action="generate-assessment"]').click()
                     res = await response.value
                     assert res.status==200
                     payload = await res.json()
-                else:
-                    payload=await page.evaluate('(id)=>window.RegBridgeEntrepreneurApi.latestAssessment(id)',project['id'])
-                record['assessment'] = {k:payload.get(k) for k in ('id','version','status','verification_verdict')}
-                record['assessment']['result_keys'] = list(payload.get('result',{}))
-                record['assessment']['counts'] = {k:len(payload.get('result',{}).get(k,[])) for k in ('obligations','recommendations','uncertainties','sources')}
-                print(json.dumps({'assessment':record['assessment']},ensure_ascii=False),flush=True)
-                assert payload['status']=='completed', 'Assessment not completed'
+                elif stage == 'presentation':
+                    assessments=await page.evaluate('(id)=>window.RegBridgeEntrepreneurApi.assessments(id)',project['id'])
+                    payload=next((item for item in reversed(assessments) if item['status']=='completed' and item.get('verification_verdict') in ('pass','pass_with_warnings') and any(item.get('result',{}).get(key) for key in ('obligations','recommendations'))),None)
+                    if payload is not None:
+                        await nav(page, 'regulatory')
+                        await page.locator(f'[data-action="select-assessment"][data-version="{payload["version"]}"]').click()
+                        await ready(page)
+                        await expect(page.locator('[data-workspace]')).to_contain_text(f'Version {payload["version"]}')
+                if payload is not None:
+                    record['assessment'] = {k:payload.get(k) for k in ('id','version','status','verification_verdict')}
+                    record['assessment']['result_keys'] = list(payload.get('result',{}))
+                    record['assessment']['counts'] = {k:len(payload.get('result',{}).get(k,[])) for k in ('obligations','recommendations','uncertainties','sources')}
+                    print(json.dumps({'assessment':record['assessment']},ensure_ascii=False),flush=True)
                 await quiet(page)
                 await page.reload()
                 await ready(page)
@@ -171,7 +430,7 @@ async def run(stage):
                 await ready(page)
                 await expect(page.locator('[data-roadmap-item]').first).to_have_value(expected)
                 record['roadmap']['status_persisted']=True
-            if stage in ('copilot','all'):
+            if stage in ('copilot','all','presentation'):
                 await page.locator('[data-open-copilot]').click()
                 drawer=page.locator('[data-copilot-drawer]')
                 record['drawer_width']=(await drawer.bounding_box())['width']
@@ -182,7 +441,7 @@ async def run(stage):
                 assert record['fullscreen_width']>=1438
                 await page.screenshot(path=str(OUT/'demo-fullscreen-desktop.png'))
                 await page.locator('[data-expand-copilot]').click()
-                await page.locator('#copilot-question').fill('Quelles obligations réglementaires principales concernent ce projet ? Précisez les informations manquantes et les limites des sources disponibles.')
+                await page.locator('#copilot-question').fill('Quelles sont les principales obligations réglementaires pour EnerSight, et quelles informations manquent encore ?')
                 async with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/responses'), timeout=240_000) as response:
                     await page.locator('[data-submit-copilot]').click()
                     await expect(page.locator('[data-copilot-generating]')).to_be_visible()
@@ -210,7 +469,7 @@ async def run(stage):
                 record['copilot']['hidden_completion_preserved']=True
                 await page.locator('[data-close-copilot]').click()
                 await page.set_viewport_size({'width':1440,'height':1000})
-            if stage in ('contracts','all','post'):
+            if stage in ('contracts','all','post','presentation'):
                 await nav(page,'documents')
                 docs=await page.evaluate('(id)=>window.RegBridgeEntrepreneurApi.projectDocuments(id)',project['id'])
                 document=next((d for d in docs if d['title']=='Contrat EnerSight Demo'),None)
@@ -236,7 +495,7 @@ async def run(stage):
                 await nav(page,'contracts')
                 await page.locator('[data-contract-document]').select_option(document['id']+'|'+version['id'])
                 analyses=await page.evaluate('(id)=>window.RegBridgeEntrepreneurApi.documentAnalyses(id)',document['id'])
-                payload=next((a for a in reversed(analyses) if a['status']=='completed'),None) if stage in ('all','post') else None
+                payload=next((a for a in reversed(analyses) if a['status']=='completed'),None) if stage in ('post', 'presentation') else None
                 if payload is None:
                     async with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/analyses'),timeout=240_000) as response:
                         await page.locator('[data-action="analyze-contract"]').click()
@@ -253,7 +512,7 @@ async def run(stage):
                 await page.reload()
                 await ready(page)
                 await expect(page.locator('[data-workspace]')).to_contain_text(payload['observations'][0]['source_quote'])
-            if stage in ('compliance','all','post'):
+            if stage in ('compliance','all','post','presentation'):
                 if project['project_type']=='idea':
                     await nav(page,'project')
                     async with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/transition')) as response:
@@ -294,7 +553,7 @@ async def run(stage):
                 await expect(page.locator('.score-card')).to_contain_text(f"{payload['score']:g} %")
                 record['score']['persisted']=True
             await quiet(page)
-            if stage in ('all','post'):
+            if stage in ('all','post','presentation'):
                 await page.locator('[data-logout]').click()
                 await page.wait_for_url(re.compile(r'/auth/login/|:18080/'),timeout=30_000)
                 record['logout']=True

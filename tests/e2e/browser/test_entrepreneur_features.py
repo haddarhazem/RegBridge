@@ -6,9 +6,57 @@ import uuid
 import pytest
 from playwright.async_api import expect
 
-from .conftest import authenticate, create_project
+from .conftest import authenticate, complete_onboarding, create_project
 
 pytestmark = pytest.mark.browser_e2e
+
+
+async def test_launch_roadmap_without_regulatory_assessment(browser_page, synthetic_user):
+    """A real browser/API/DB journey proves that regulatory analysis is optional."""
+    page = browser_page
+    errors = []
+    failed_responses = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.on('response', lambda response: failed_responses.append((response.status, response.url)) if response.status >= 400 else None)
+    await authenticate(page, synthetic_user)
+    await create_project(page, 'Plateforme SaaS B2B EnergyTech avec IA, IoT et données personnelles en France.')
+    await page.wait_for_url(re.compile(r"view=onboarding"), timeout=10_000)
+    await complete_onboarding(page, {
+        'activity': 'Plateforme SaaS B2B d’analyse énergétique pour les PME',
+        'sector': 'EnergyTech',
+        'technology': 'Intelligence artificielle, machine learning, IoT et cloud',
+        'data': 'Données personnelles clients et données techniques énergétiques',
+        'market': 'PME B2B en France',
+        'location': 'France',
+    })
+    await page.locator('[data-nav-view="roadmap"]').first.click()
+    await expect(page.locator('[data-action="generate-roadmap"]')).to_be_visible()
+    await expect(page.locator('[data-workspace]')).to_contain_text('Couverture réglementaire à compléter')
+    async with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith('/roadmaps')) as response_info:
+        await page.locator('[data-action="generate-roadmap"]').click()
+    response = await response_info.value
+    assert response.status == 200
+    payload = await response.json()
+    assert payload['regulatory_assessment_id'] is None
+    assert payload['regulatory_coverage'] == 'incomplete'
+    assert len(payload['items']) == 14
+    await expect(page.locator('.roadmap-item')).to_have_count(14)
+    for heading in ('Préparer la structure', 'Préparer l’exploitation', 'Données et numérique', 'Avant le lancement'):
+        await expect(page.locator('[data-workspace]')).to_contain_text(heading)
+    for expected in ('Données personnelles', 'Sécurité et hébergement', 'Selon votre projet', 'Général'):
+        await expect(page.locator('[data-workspace]')).to_contain_text(expected)
+    assert 'Équipe et RH' not in await page.locator('[data-workspace]').inner_text()
+    await page.screenshot(path='artifacts/browser-e2e/launch-roadmap-baseline.png', full_page=True, animations='disabled')
+    await page.locator('.roadmap-item summary').first.click()
+    await page.locator('[data-roadmap-item]').first.select_option('in_progress')
+    await page.reload()
+    await expect(page.locator('[data-roadmap-item]').first).to_have_value('in_progress')
+    await page.locator('[data-nav-view="regulatory"]').click()
+    await expect(page.locator('[data-workspace]')).to_contain_text('Aucune évaluation')
+    await page.locator('[data-nav-view="roadmap"]').first.click()
+    await expect(page.locator('.roadmap-item')).to_have_count(14)
+    assert not errors
+    assert not failed_responses
 
 
 async def test_copilot_visibility_fullscreen_and_hidden_completion(browser_page, synthetic_user):
@@ -94,6 +142,10 @@ async def test_versioned_assessment_roadmap_and_contract_reading(browser_page, s
     try:
         async with async_sessionmaker(engine,expire_on_commit=False)() as session:
             project=await session.get(Project,project_id)
+            project.activity='Plateforme SaaS'
+            project.sector='Services numériques'
+            project.technology='Application web'
+            project.confirmed_fields={'activity':'confirmed','sector':'confirmed','technology':'confirmed'}
             snapshot=AssessmentInputSnapshot(project_id=project_id,facts=[],snapshot_hash='f'*64)
             session.add(snapshot)
             await session.flush()
@@ -120,16 +172,18 @@ async def test_versioned_assessment_roadmap_and_contract_reading(browser_page, s
         await expect(page.locator('[data-workspace]')).to_contain_text('Synthetic assessment version 1')
         await page.locator('[data-nav-view="roadmap"]').first.click()
         await page.locator('[data-action="generate-roadmap"]').click()
-        await expect(page.locator('.roadmap-item')).to_have_count(2)
+        await expect(page.locator('.roadmap-item')).to_have_count(11)
+        await expect(page.locator('[data-workspace]')).to_contain_text('Préparer la structure')
+        await expect(page.locator('[data-workspace]')).to_contain_text('Évaluation réglementaire')
         await page.locator('.roadmap-item summary').first.click()
         await page.locator('[data-roadmap-item]').first.select_option('completed')
-        await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 2')
+        await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 11')
         await page.reload()
-        await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 2')
+        await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 11')
         await page.locator('[data-action="generate-roadmap"]').click()
         await expect(page.locator('[data-action="select-roadmap"]')).to_have_count(2)
         await page.locator('[data-action="select-roadmap"][data-version="1"]').click()
-        await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 2')
+        await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 11')
         await page.locator('[data-nav-view="contracts"]').click()
         await expect(page.locator('.analysis-card')).to_contain_text(quote)
         await expect(page.locator('.analysis-card')).to_contain_text('v1')

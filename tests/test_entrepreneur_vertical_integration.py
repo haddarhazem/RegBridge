@@ -117,7 +117,7 @@ async def test_server_project_catalog_and_persisted_authorized_copilot_turn(vert
     other_email = f"vertical-other-{other_id}@example.test"
     owner, other = actor(owner_id, owner_email), actor(other_id, other_email)
     project_ids: list[uuid.UUID] = []
-    thread_id: uuid.UUID | None = None
+    thread_ids: list[uuid.UUID] = []
 
     async with vertical_factory() as session:
         session.add_all([User(id=owner_id, email=owner_email), User(id=other_id, email=other_email)])
@@ -145,7 +145,26 @@ async def test_server_project_catalog_and_persisted_authorized_copilot_turn(vert
             conversation_service = ConversationService(session)
             thread = await create_conversation(ConversationCreate(title="Project A Copilot", subject_type="project", subject_id=project_ids[0]), owner, session)
             assert thread.messages == []
-            thread_id = thread.id
+            thread_ids.append(thread.id)
+            owner_project_b = await ProjectService(session).create_idea(owner, IdeaProjectCreate(display_name="Project A second workspace"))
+            project_ids.append(owner_project_b.id)
+            other_thread = await create_conversation(
+                ConversationCreate(title="Other project history", subject_type="project", subject_id=owner_project_b.id),
+                owner,
+                session,
+            )
+            thread_ids.append(other_thread.id)
+            project_history = await conversation_service.list_threads(
+                owner,
+                subject_type="project",
+                subject_id=project_ids[0],
+            )
+            assert [item.id for item in project_history] == [thread.id]
+            assert await conversation_service.list_threads(
+                other,
+                subject_type="project",
+                subject_id=project_ids[0],
+            ) == []
             repository = ProjectContextRepository(session)
             agent = ContextEchoAgent()
             request_id = uuid.uuid4()
@@ -167,18 +186,18 @@ async def test_server_project_catalog_and_persisted_authorized_copilot_turn(vert
             assert all(trace.request_id == request_id for trace in traces)
 
         async with vertical_factory() as session:
-            persisted = await ConversationService(session).get_thread(owner, thread_id)
+            persisted = await ConversationService(session).get_thread(owner, thread_ids[0])
             assert [message.role for message in persisted.messages] == ["user", "assistant"]
             assert persisted.messages[1].content_json["sources"] == ["CNIL"]
             with pytest.raises(HTTPException) as denied:
-                await ConversationService(session).get_thread(other, thread_id)
+                await ConversationService(session).get_thread(other, thread_ids[0])
             assert denied.value.status_code == 404
     finally:
         async with vertical_factory() as session:
             await session.execute(delete(AgentRun).where(AgentRun.subject_id.in_(project_ids)))
-            if thread_id is not None:
-                await session.execute(delete(ConversationMessage).where(ConversationMessage.thread_id == thread_id))
-                await session.execute(delete(ConversationThread).where(ConversationThread.id == thread_id))
+            if thread_ids:
+                await session.execute(delete(ConversationMessage).where(ConversationMessage.thread_id.in_(thread_ids)))
+                await session.execute(delete(ConversationThread).where(ConversationThread.id.in_(thread_ids)))
             await session.execute(delete(AuditLog).where(AuditLog.project_id.in_(project_ids)))
             await session.execute(delete(ProjectFact).where(ProjectFact.project_id.in_(project_ids)))
             await session.execute(delete(ProjectMember).where(ProjectMember.project_id.in_(project_ids)))

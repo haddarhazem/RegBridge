@@ -39,7 +39,7 @@ class Verifier:
 
 
 def request():
-    return AgentRequest(request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question='Évaluez les obligations applicables.', capability='regulatory', authorized_context=AuthorizedContext())
+    return AgentRequest(request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question='Évaluez les obligations applicables.', capability='regulatory', locale='fr', authorized_context=AuthorizedContext())
 
 
 @pytest.mark.asyncio
@@ -53,7 +53,10 @@ async def test_assessment_populates_existing_consumers_and_verifies_all_conclusi
     assert result.missing_information == draft['missing_information']
     assert all(value in verifier.answer for key in ('obligations','recommendations','missing_information') for value in draft[key])
     payload, evidence = RegulatoryAssessmentService._result_payload(result)
-    assert len(generate_typed_items(payload.model_dump())) == 3
+    roadmap_items = generate_typed_items(payload.model_dump())
+    assert any(item["title"] == draft["obligations"][0] for item in roadmap_items)
+    assert any(item["title"] == draft["recommendations"][0] for item in roadmap_items)
+    assert not any(item["title"] == draft["missing_information"][0] for item in roadmap_items)
     assert payload.obligations[0].source_refs == ['evidence-1']
     assert evidence[0]['point_id'] == 'evidence-1'
 
