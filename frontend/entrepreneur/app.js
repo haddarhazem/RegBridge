@@ -138,6 +138,8 @@
     CONTEXT_BUILDING: 'Préparation du contexte',
     RETRIEVING_EVIDENCE: 'Recherche des sources',
     ASSESSING_EVIDENCE: 'Évaluation des sources',
+    RETRIEVING_MISSING_DOMAIN_EVIDENCE: 'Recherche complémentaire des sources',
+    REASSESSING_EVIDENCE: 'Réévaluation des sources',
     GENERATING: 'Génération de la réponse',
     VERIFYING: 'Vérification de la réponse',
     COMPLETED: 'Terminé',
@@ -157,7 +159,10 @@
     const diagnostics = document.querySelector('[data-copilot-diagnostics]');
     const diagnosticsContent = document.querySelector('[data-copilot-diagnostics-content]');
     if (!label || !progress || !diagnostics || !diagnosticsContent) return;
-    const stages = Array.isArray(status?.stages) ? status.stages : [];
+    const stages = (Array.isArray(status?.stages) ? status.stages : []).filter((item) => (
+      !['RETRIEVING_MISSING_DOMAIN_EVIDENCE', 'REASSESSING_EVIDENCE'].includes(item.stage)
+      || item.status !== 'not_started'
+    ));
     label.textContent = copilotStageLabels[status?.current_stage] || 'Connexion au Copilote';
     progress.innerHTML = stages.map((item) => `<li data-status="${views.escape(item.status)}">${item.status === 'succeeded' ? '✓' : item.status === 'running' ? '●' : '○'} ${views.escape(copilotStageLabels[item.stage] || item.stage)}</li>`).join('');
     const data = status?.diagnostics;
@@ -167,7 +172,18 @@
         ['Request ID', status.request_id], ['Sources récupérées', data.retrieved_chunk_count], ['Couverture', status.evidence_status],
         ['Domaines requis', (data.required_domains || []).join(', ')], ['Couverts', (data.covered_domains || []).join(', ')],
         ['À vérifier', (data.missing_domains || []).join(', ')], ['Fournisseur / modèle', [data.provider, data.model].filter(Boolean).join(' / ')],
-        ['Vérification', data.verification_verdict], ['Code échec', data.failure_code],
+        ['Dérivation', data.resolution_source], ['Signaux', (data.matched_signals || []).join(', ')],
+        ['Précision requise', data.needs_clarification ? 'Oui' : 'Non'], ['Vérification', data.verification_verdict], ['Code échec', data.failure_code],
+        ['Verification reason', data.verification_reason], ['Claims analysed', data.semantic_claim_count],
+        ['Supported claims', data.supported_claim_count], ['Unsupported claims', data.unsupported_claim_count],
+        ['Unverified claims', data.unverified_claim_count],
+        ['Sources initiales', data.initial_evidence_count], ['Statut initial', data.initial_evidence_status],
+        ['Couverts initialement', (data.initial_covered_domains || []).join(', ')], ['Manquants initialement', (data.initial_missing_domains || []).join(', ')],
+        ['Recherche complémentaire', data.fallback_attempted ? 'Oui' : 'Non'], ['Domaines recherchés', (data.fallback_domains || []).join(', ')],
+        ['Sources complémentaires', data.fallback_evidence_count], ['Nouvelles sources uniques', data.fallback_unique_evidence_count],
+        ['Échecs complémentaires', (data.fallback_failed_domains || []).join(', ')], ['Sources finales', data.final_evidence_count],
+        ['Statut final', data.final_evidence_status], ['Couverts finalement', (data.final_covered_domains || []).join(', ')],
+        ['Manquants finalement', (data.final_missing_domains || []).join(', ')],
       ].filter(([, value]) => value !== null && value !== undefined && value !== '');
       diagnosticsContent.innerHTML = rows.map(([key, value]) => `<dt>${views.escape(key)}</dt><dd>${views.escape(String(value))}</dd>`).join('');
     }

@@ -90,7 +90,29 @@ class CopilotDiagnosticsResponse(BaseModel):
     provider: str | None = Field(default=None, max_length=80)
     model: str | None = Field(default=None, max_length=120)
     verification_verdict: str | None = Field(default=None, max_length=40)
+    verification_reason: str | None = Field(default=None, max_length=500)
+    semantic_claim_count: int | None = Field(default=None, ge=0, le=50)
+    supported_claim_count: int | None = Field(default=None, ge=0, le=50)
+    unsupported_claim_count: int | None = Field(default=None, ge=0, le=50)
+    unverified_claim_count: int | None = Field(default=None, ge=0, le=50)
     failure_code: str | None = Field(default=None, max_length=80)
+    resolution_source: str | None = Field(default=None, max_length=80)
+    matched_signals: list[str] = Field(default_factory=list, max_length=12)
+    needs_clarification: bool = False
+    initial_evidence_count: int | None = Field(default=None, ge=0, le=5)
+    initial_evidence_status: EvidenceStatus | None = None
+    initial_covered_domains: list[str] = Field(default_factory=list, max_length=6)
+    initial_missing_domains: list[str] = Field(default_factory=list, max_length=6)
+    fallback_attempted: bool = False
+    fallback_domains: list[str] = Field(default_factory=list, max_length=6)
+    fallback_evidence_count: int | None = Field(default=None, ge=0, le=30)
+    fallback_unique_evidence_count: int | None = Field(default=None, ge=0, le=30)
+    fallback_failed_domains: list[str] = Field(default_factory=list, max_length=6)
+    fallback_failure_count: int | None = Field(default=None, ge=0, le=6)
+    final_evidence_count: int | None = Field(default=None, ge=0, le=35)
+    final_evidence_status: EvidenceStatus | None = None
+    final_covered_domains: list[str] = Field(default_factory=list, max_length=6)
+    final_missing_domains: list[str] = Field(default_factory=list, max_length=6)
 
 
 class CopilotRequestStatusResponse(BaseModel):
@@ -105,7 +127,7 @@ class CopilotRequestStatusResponse(BaseModel):
     completed_at: datetime | None = None
     failure_stage: PipelineStage | None = None
     failure_code: str | None = Field(default=None, max_length=80)
-    stages: list[CopilotStageResponse] = Field(default_factory=list, max_length=7)
+    stages: list[CopilotStageResponse] = Field(default_factory=list, max_length=9)
     diagnostics: CopilotDiagnosticsResponse | None = None
 
 
@@ -147,7 +169,10 @@ class AgentRunResponseTrace(BaseModel):
 
     schema_version: str = Field(default="1", max_length=40)
     summary: str | None = Field(default=None, max_length=2000)
-    result: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=70)
+    # Pipeline fallback and verification diagnostics add bounded scalar-only
+    # fields to the existing allowlist; this remains a projection, not an
+    # arbitrary application-object trace.
+    result: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=110)
     source_refs: list[TraceSourceRef] = Field(default_factory=list, max_length=50)
 
 

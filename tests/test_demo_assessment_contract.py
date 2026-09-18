@@ -39,7 +39,7 @@ class Verifier:
 
 
 def request():
-    return AgentRequest(request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question='Évaluez les obligations applicables.', capability='regulatory', locale='fr', authorized_context=AuthorizedContext())
+    return AgentRequest(request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question='Quelles obligations RGPD sont applicables ?', capability='regulatory', locale='fr', authorized_context=AuthorizedContext())
 
 
 @pytest.mark.asyncio

@@ -52,15 +52,33 @@ async def test_pipeline_stage_summaries_persist_by_request_id(pipeline_session: 
     await recorder.succeed(PipelineStage.RETRIEVING_EVIDENCE, {"retrieved_chunk_count": 3})
     await recorder.start(PipelineStage.ASSESSING_EVIDENCE)
     await recorder.succeed(PipelineStage.ASSESSING_EVIDENCE, {"evidence_status": "PARTIAL", "missing_domains": "AI"})
+    await recorder.start(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE)
+    await recorder.succeed(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE, {
+        "fallback_attempted": True, "fallback_domains": "AI", "fallback_evidence_count": 2,
+        "fallback_unique_evidence_count": 1, "final_evidence_count": 4,
+    })
+    await recorder.start(PipelineStage.REASSESSING_EVIDENCE)
+    await recorder.succeed(PipelineStage.REASSESSING_EVIDENCE, {
+        "evidence_status": "SUFFICIENT", "final_evidence_status": "SUFFICIENT",
+        "final_covered_domains": "PRIVACY, AI", "final_missing_domains": "",
+    })
     await recorder.start(PipelineStage.GENERATING)
     await recorder.fail(PipelineStage.GENERATING, error_code="PROVIDER_RATE_LIMIT", error_message="safe provider failure")
 
     trace = await service.get_request_trace(request_id)
-    assert {run.capability for run in trace} >= {"orchestration", "retrieving_evidence", "assessing_evidence", "generating"}
+    assert {run.capability for run in trace} >= {
+        "orchestration", "retrieving_evidence", "assessing_evidence",
+        "retrieving_missing_domain_evidence", "reassessing_evidence", "generating",
+    }
     generation = next(run for run in trace if run.capability == "generating")
     assessment = next(run for run in trace if run.capability == "assessing_evidence")
     assert generation.status == "failed" and generation.error_code == "PROVIDER_RATE_LIMIT"
     assert assessment.response_payload["result"]["evidence_status"] == "PARTIAL"
+    fallback = next(run for run in trace if run.capability == "retrieving_missing_domain_evidence")
+    assert fallback.response_payload["result"] == {
+        "fallback_attempted": True, "fallback_domains": "AI", "fallback_evidence_count": 2,
+        "fallback_unique_evidence_count": 1, "final_evidence_count": 4,
+    }
     assert all(run.request_id == request_id for run in trace)
 
     await pipeline_session.execute(delete(AgentRun).where(AgentRun.request_id == request_id))
@@ -92,10 +110,47 @@ async def test_status_endpoint_authorizes_conversation_and_active_membership(pip
         await recorder.start(PipelineStage.CONTEXT_BUILDING)
         await recorder.succeed(PipelineStage.CONTEXT_BUILDING)
         await recorder.start(PipelineStage.RETRIEVING_EVIDENCE)
+        await recorder.succeed(PipelineStage.RETRIEVING_EVIDENCE, {"retrieved_chunk_count": 1})
+        await recorder.start(PipelineStage.ASSESSING_EVIDENCE)
+        await recorder.succeed(PipelineStage.ASSESSING_EVIDENCE, {
+            "evidence_status": "SUFFICIENT",
+            "required_domains": "PRIVACY",
+            "covered_domains": "PRIVACY",
+            "resolution_source": "QUESTION_EXPLICIT",
+            "matched_signals": "question:rgpd",
+            "needs_clarification": False,
+        })
 
         own = await get_copilot_request_status(thread.id, request_id, owner, pipeline_session)
-        assert own.status == "running" and own.current_stage == PipelineStage.RETRIEVING_EVIDENCE
+        assert own.status == "running" and own.current_stage == PipelineStage.ASSESSING_EVIDENCE
         assert own.diagnostics is not None
+        assert own.diagnostics.resolution_source == "QUESTION_EXPLICIT"
+        assert own.diagnostics.matched_signals == ["question:rgpd"]
+        await recorder.start(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE)
+        await recorder.succeed(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE, {
+            "fallback_attempted": True, "fallback_domains": "AI", "fallback_evidence_count": 2,
+            "fallback_unique_evidence_count": 1, "final_evidence_count": 2,
+        })
+        await recorder.start(PipelineStage.REASSESSING_EVIDENCE)
+        await recorder.succeed(PipelineStage.REASSESSING_EVIDENCE, {
+            "evidence_status": "SUFFICIENT", "final_evidence_status": "SUFFICIENT",
+            "final_covered_domains": "PRIVACY, AI", "final_missing_domains": "",
+        })
+        await recorder.start(PipelineStage.VERIFYING)
+        await recorder.fail(PipelineStage.VERIFYING, error_code="VERIFICATION_FAILED", error_message="safe verification failure", result={
+            "verification_verdict": "block", "verification_reason": "bounded safe reason",
+            "semantic_claim_count": 0, "supported_claim_count": 0,
+            "unsupported_claim_count": 0, "unverified_claim_count": 0,
+        })
+        recovered = await get_copilot_request_status(thread.id, request_id, owner, pipeline_session)
+        assert recovered.current_stage == PipelineStage.FAILED
+        assert recovered.evidence_status.value == "SUFFICIENT"
+        assert recovered.diagnostics is not None
+        assert recovered.diagnostics.fallback_attempted is True
+        assert recovered.diagnostics.fallback_domains == ["AI"]
+        assert recovered.diagnostics.final_covered_domains == ["PRIVACY", "AI"]
+        assert recovered.diagnostics.verification_reason == "bounded safe reason"
+        assert recovered.diagnostics.semantic_claim_count == 0
         with pytest.raises(HTTPException) as cross_user:
             await get_copilot_request_status(thread.id, request_id, other, pipeline_session)
         assert cross_user.value.status_code == 404

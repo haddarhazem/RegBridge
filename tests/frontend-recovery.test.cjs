@@ -49,6 +49,16 @@ test('provider rate limiting uses the safe demo-facing message', () => {
   assert.doesNotMatch(source, /Copilot rate limit reached|RESOURCE_EXHAUSTED|provider_rate_limited/);
 });
 
+test('copilot maps the real fallback stages without exposing domain query text', () => {
+  const source = fs.readFileSync('frontend/entrepreneur/app.js', 'utf8');
+  assert.match(source, /RETRIEVING_MISSING_DOMAIN_EVIDENCE/);
+  assert.match(source, /REASSESSING_EVIDENCE/);
+  assert.match(source, /Recherche complémentaire des sources/);
+  assert.match(source, /Réévaluation des sources/);
+  assert.match(source, /item\.status !== 'not_started'/);
+  assert.doesNotMatch(source, /fallback_query|domain_query/i);
+});
+
 test('project and populated roadmap render production response shapes', () => {
   const views = load('frontend/entrepreneur/views.js').RegBridgeEntrepreneurViews;
   const project = {display_name: 'Synthetic project', project_type: 'idea', activity: 'SaaS', data: 'D'.repeat(572)};

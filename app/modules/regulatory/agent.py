@@ -18,7 +18,12 @@ from app.modules.ai.llm import (
     LLM_REQUEST_MAX_MESSAGES,
 )
 from app.modules.regulatory.contracts import RegulatoryEvidence
-from app.modules.regulatory.evidence_sufficiency import EvidenceSufficiencyEvaluator, public_domain_labels
+from app.modules.regulatory.evidence_sufficiency import (
+    EvidenceSufficiencyEvaluator,
+    MissingDomainQueryBuilder,
+    RequiredDomainResolver,
+    public_domain_labels,
+)
 from app.modules.regulatory.retrieval import RegulatoryRetriever, RegulatoryRetrievalError
 from app.modules.regulatory.verification import ResponseVerificationService, VerificationResult
 from app.modules.ai.pipeline import PipelineStageRecorder
@@ -64,13 +69,15 @@ class RegulatoryAgent(Agent):
     name = "regulatory-agent"
     capabilities = ("regulatory",)
 
-    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, evaluator: EvidenceSufficiencyEvaluator | None = None, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
+    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, evaluator: EvidenceSufficiencyEvaluator | None = None, resolver: RequiredDomainResolver | None = None, query_builder: MissingDomainQueryBuilder | None = None, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
         self.retriever = retriever
         self.provider = provider
         self.generation_max_tokens = generation_max_tokens
         self.structured_assessment = structured_assessment
         self.verifier = verifier or ResponseVerificationService(provider=provider, max_tokens=verification_max_tokens)
         self.evaluator = evaluator or EvidenceSufficiencyEvaluator()
+        self.resolver = resolver or RequiredDomainResolver()
+        self.query_builder = query_builder or MissingDomainQueryBuilder()
 
     async def run(self, request: AgentRequest, *, pipeline: PipelineStageRecorder | None = None) -> AgentResult:
         if not request.question.strip():
@@ -81,6 +88,20 @@ class RegulatoryAgent(Agent):
             return self._context_only_result("Aucune roadmap n’a encore été générée pour ce projet.", "roadmap_unavailable")
         if requests_document_context(request.question) and request.authorized_context.document is None and request.authorized_context.contract_analysis is None:
             return self._context_only_result("Sélectionnez un document ou ouvrez une analyse pour poser une question sur ce document.", "document_context_unavailable")
+        resolution = self.resolver.resolve(request.question, request.authorized_context)
+        if resolution.needs_clarification:
+            resolution_payload = _resolution_payload(resolution)
+            if pipeline is not None:
+                await pipeline.start(PipelineStage.ASSESSING_EVIDENCE)
+                await pipeline.succeed(PipelineStage.ASSESSING_EVIDENCE, resolution_payload)
+            return AgentResult(
+                agent_name=self.name,
+                capability=request.capability,
+                status="succeeded",
+                answer=_clarification_answer(request.question),
+                warnings=["La demande doit être précisée avant de rechercher des sources réglementaires."],
+                structured_payload={**resolution_payload, "generation_skipped": True},
+            )
         if pipeline is not None:
             await pipeline.start(PipelineStage.RETRIEVING_EVIDENCE)
         try:
@@ -95,14 +116,94 @@ class RegulatoryAgent(Agent):
         if pipeline is not None:
             await pipeline.start(PipelineStage.ASSESSING_EVIDENCE)
         try:
-            evidence_assessment = self.evaluator.evaluate(request.question, request.authorized_context, evidence)
+            evidence_assessment = self.evaluator.evaluate(resolution, evidence)
         except Exception:
             if pipeline is not None:
                 await pipeline.fail(PipelineStage.ASSESSING_EVIDENCE, error_code="EVIDENCE_ASSESSMENT_FAILED", error_message="Evidence coverage could not be assessed")
             return self._failure("evidence_assessment_failed", "Evidence coverage could not be assessed")
-        assessment_payload = _assessment_payload(evidence_assessment)
+        initial_evidence = evidence
+        initial_assessment = evidence_assessment
+        assessment_payload = _initial_assessment_payload(initial_assessment, initial_evidence_count=len(initial_evidence))
         if pipeline is not None:
             await pipeline.succeed(PipelineStage.ASSESSING_EVIDENCE, assessment_payload)
+
+        fallback_payload = _fallback_payload(
+            attempted=False,
+            domains=[],
+            initial_evidence_count=len(initial_evidence),
+            fallback_evidence_count=0,
+            fallback_unique_evidence_count=0,
+            final_evidence_count=len(initial_evidence),
+            initial_assessment=initial_assessment,
+            final_assessment=initial_assessment,
+        )
+        fallback_warnings: list[str] = []
+        if initial_assessment.status in {EvidenceStatus.PARTIAL, EvidenceStatus.INSUFFICIENT}:
+            missing_domains = initial_assessment.missing_domains
+            if pipeline is not None:
+                await pipeline.start(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE)
+            fallback_evidence: list[RegulatoryEvidence] = []
+            failed_domains: list[str] = []
+            for domain in missing_domains:
+                query = self.query_builder.build(request.question, domain, request.authorized_context)
+                try:
+                    fallback_evidence.extend(await self.retriever.retrieve(query))
+                except RegulatoryRetrievalError:
+                    failed_domains.append(domain)
+
+            evidence = _merge_evidence(initial_evidence, fallback_evidence)
+            fallback_payload = _fallback_payload(
+                attempted=True,
+                domains=missing_domains,
+                initial_evidence_count=len(initial_evidence),
+                fallback_evidence_count=len(fallback_evidence),
+                fallback_unique_evidence_count=max(len(evidence) - len(initial_evidence), 0),
+                final_evidence_count=len(evidence),
+                initial_assessment=initial_assessment,
+                final_assessment=initial_assessment,
+                failed_domains=failed_domains,
+            )
+            if failed_domains and len(failed_domains) == len(missing_domains):
+                if pipeline is not None:
+                    await pipeline.fail(
+                        PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE,
+                        error_code="FALLBACK_RETRIEVAL_FAILED",
+                        error_message="Supplementary regulatory retrieval is temporarily unavailable",
+                        result=fallback_payload,
+                    )
+                return self._safe_insufficient_result(
+                    request,
+                    initial_evidence,
+                    initial_assessment,
+                    {**assessment_payload, **fallback_payload, "fallback_failure_code": "FALLBACK_RETRIEVAL_FAILED"},
+                    extra_warning="La recherche complÃ©mentaire de sources est temporairement indisponible ; les sources initiales sont conservÃ©es.",
+                )
+            if failed_domains:
+                fallback_warnings.append("Certaines recherches complÃ©mentaires de sources nâ€™ont pas abouti ; les sources disponibles sont conservÃ©es.")
+            if pipeline is not None:
+                await pipeline.succeed(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE, fallback_payload)
+                await pipeline.start(PipelineStage.REASSESSING_EVIDENCE)
+            try:
+                evidence_assessment = self.evaluator.evaluate(resolution, evidence)
+            except Exception:
+                if pipeline is not None:
+                    await pipeline.fail(PipelineStage.REASSESSING_EVIDENCE, error_code="EVIDENCE_ASSESSMENT_FAILED", error_message="Merged evidence coverage could not be assessed")
+                return self._failure("evidence_assessment_failed", "Merged evidence coverage could not be assessed")
+            fallback_payload = _fallback_payload(
+                attempted=True,
+                domains=missing_domains,
+                initial_evidence_count=len(initial_evidence),
+                fallback_evidence_count=len(fallback_evidence),
+                fallback_unique_evidence_count=max(len(evidence) - len(initial_evidence), 0),
+                final_evidence_count=len(evidence),
+                initial_assessment=initial_assessment,
+                final_assessment=evidence_assessment,
+                failed_domains=failed_domains,
+            )
+            if pipeline is not None:
+                await pipeline.succeed(PipelineStage.REASSESSING_EVIDENCE, {**_assessment_payload(evidence_assessment), **fallback_payload})
+
+        assessment_payload = {**_assessment_payload(evidence_assessment), **fallback_payload}
         if evidence_assessment.status == EvidenceStatus.INSUFFICIENT:
             # Preserve the original direct-agent contract for callers that do
             # not participate in the observable Copilot pipeline. Existing
@@ -212,7 +313,7 @@ class RegulatoryAgent(Agent):
             cited_evidence_ids=[item.point_id for item in evidence],
         )
         if pipeline is not None:
-            verification_payload = {"verification_verdict": verification.verdict, "verification_failure_category": verification.technical_failure_category}
+            verification_payload = _verification_stage_payload(verification)
             if verification.technical_failure_category:
                 await pipeline.fail(PipelineStage.VERIFYING, error_code="VERIFICATION_FAILED", error_message="The generated response could not be verified reliably", result=verification_payload)
             elif verification.verdict == "block":
@@ -247,7 +348,7 @@ class RegulatoryAgent(Agent):
                 **_execution_payload("generation", generated.execution),
                 **_verification_payload(verification),
             },
-            warnings=([] if verification.verdict == "pass" else verification.reasons) + (
+            warnings=fallback_warnings + ([] if verification.verdict == "pass" else verification.reasons) + (
                 ["Les sources disponibles permettent de répondre sur certains points, mais la couverture est incomplète."]
                 if evidence_assessment.status == EvidenceStatus.PARTIAL else []
             ),
@@ -271,6 +372,29 @@ class RegulatoryAgent(Agent):
             error_code=code,
             warnings=[warning],
             structured_payload=structured_payload or {},
+        )
+
+    def _safe_insufficient_result(
+        self,
+        request: AgentRequest,
+        evidence: list[RegulatoryEvidence],
+        assessment,
+        payload: dict[str, str | int | float | bool | None],
+        *,
+        extra_warning: str | None = None,
+    ) -> AgentResult:
+        warnings = ["Les sources disponibles ne permettent pas de répondre de manière fiable sur tous les points."]
+        if extra_warning:
+            warnings.append(extra_warning)
+        return AgentResult(
+            agent_name=self.name,
+            capability=request.capability,
+            status="succeeded",
+            answer="Les sources réglementaires disponibles ne couvrent pas suffisamment cette question. Certains domaines doivent encore être vérifiés.",
+            sources=_unique_organizations(evidence),
+            evidence=[item.model_dump() for item in evidence],
+            warnings=warnings,
+            structured_payload={"evidence_status": assessment.status.value, **payload, "generation_skipped": True},
         )
 
 
@@ -384,7 +508,74 @@ def _assessment_payload(assessment) -> dict[str, str | int | float | bool | None
         "useful_evidence_count": assessment.useful_evidence_count,
         "total_evidence_count": assessment.total_evidence_count,
         "domain_reasons": " | ".join(f"{domain}: {reason}" for domain, reason in assessment.domain_reasons.items())[:1800],
+        **_resolution_payload(assessment),
     }
+
+
+def _initial_assessment_payload(assessment, *, initial_evidence_count: int) -> dict[str, str | int | float | bool | None]:
+    return {
+        **_assessment_payload(assessment),
+        "initial_evidence_status": assessment.status.value,
+        "initial_covered_domains": ", ".join(assessment.covered_domains),
+        "initial_missing_domains": ", ".join(assessment.missing_domains),
+        "initial_evidence_count": initial_evidence_count,
+    }
+
+
+def _fallback_payload(
+    *,
+    attempted: bool,
+    domains: list[str],
+    initial_evidence_count: int,
+    fallback_evidence_count: int,
+    fallback_unique_evidence_count: int,
+    final_evidence_count: int,
+    initial_assessment,
+    final_assessment,
+    failed_domains: list[str] | None = None,
+) -> dict[str, str | int | float | bool | None]:
+    failed = failed_domains or []
+    return {
+        "fallback_attempted": attempted,
+        "fallback_domains": ", ".join(domains),
+        "fallback_evidence_count": fallback_evidence_count,
+        "fallback_unique_evidence_count": fallback_unique_evidence_count,
+        "fallback_failed_domains": ", ".join(failed),
+        "fallback_failure_count": len(failed),
+        "initial_evidence_count": initial_evidence_count,
+        "initial_evidence_status": initial_assessment.status.value,
+        "initial_covered_domains": ", ".join(initial_assessment.covered_domains),
+        "initial_missing_domains": ", ".join(initial_assessment.missing_domains),
+        "final_evidence_count": final_evidence_count,
+        "final_evidence_status": final_assessment.status.value,
+        "final_covered_domains": ", ".join(final_assessment.covered_domains),
+        "final_missing_domains": ", ".join(final_assessment.missing_domains),
+    }
+
+
+def _merge_evidence(initial: list[RegulatoryEvidence], fallback: list[RegulatoryEvidence]) -> list[RegulatoryEvidence]:
+    """Preserve initial rank/order and merge fallback results by stable point id."""
+    merged: list[RegulatoryEvidence] = []
+    seen: set[str] = set()
+    for item in [*initial, *fallback]:
+        if item.point_id not in seen:
+            seen.add(item.point_id)
+            merged.append(item)
+    return merged
+
+
+def _resolution_payload(resolution) -> dict[str, str | int | float | bool | None]:
+    return {
+        "resolution_source": resolution.resolution_source.value,
+        "matched_signals": ", ".join(resolution.matched_signals),
+        "needs_clarification": resolution.needs_clarification,
+    }
+
+
+def _clarification_answer(question: str) -> str:
+    if "rgbd" in question.casefold():
+        return "Je ne suis pas certain du terme « RGBD ». Voulez-vous parler du RGPD (Règlement général sur la protection des données) ou d'un autre sujet ?"
+    return "Je n’ai pas identifié le domaine réglementaire concerné. Pouvez-vous préciser le sujet que vous souhaitez vérifier ?"
 
 
 def _unique_organizations(evidence: list[RegulatoryEvidence]) -> list[str]:
@@ -436,6 +627,9 @@ def _roadmap_source_refs(roadmap) -> str | None:
 
 
 def _verification_payload(result: VerificationResult) -> dict[str, str | int | float | bool | None]:
+    supported_claim_count = sum(claim.support == "supported" for claim in result.claims)
+    unsupported_claim_count = sum(claim.support in {"unsupported", "contradicted"} for claim in result.claims)
+    unverified_claim_count = sum(claim.support == "partially_supported" for claim in result.claims)
     return {
         "verification_verdict": result.verdict,
         "verification_reasons": " | ".join(result.reasons)[:1800],
@@ -443,9 +637,27 @@ def _verification_payload(result: VerificationResult) -> dict[str, str | int | f
         "structural_issue_count": len(result.structural_issues),
         "semantic_claim_count": len(result.claims),
         "semantic_support": " | ".join(f"{claim.claim_id}:{claim.support}" for claim in result.claims)[:1000],
+        "supported_claim_count": supported_claim_count,
+        "unsupported_claim_count": unsupported_claim_count,
+        "unverified_claim_count": unverified_claim_count,
         "verification_latency_ms": round(result.latency_ms, 3),
         "verification_failure_category": result.technical_failure_category,
         **_execution_payload("verification", result.execution),
+    }
+
+
+def _verification_stage_payload(result: VerificationResult) -> dict[str, str | int | float | bool | None]:
+    """Expose only bounded verification diagnostics to the pipeline trace."""
+
+    payload = _verification_payload(result)
+    return {
+        "verification_verdict": payload["verification_verdict"],
+        "verification_failure_category": payload["verification_failure_category"],
+        "verification_reason": payload["verification_reasons"][:500] if isinstance(payload["verification_reasons"], str) else None,
+        "semantic_claim_count": payload["semantic_claim_count"],
+        "supported_claim_count": payload["supported_claim_count"],
+        "unsupported_claim_count": payload["unsupported_claim_count"],
+        "unverified_claim_count": payload["unverified_claim_count"],
     }
 
 

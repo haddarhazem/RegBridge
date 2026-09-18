@@ -160,12 +160,36 @@ def test_combined_evidence_above_message_limit_is_partitioned_losslessly():
 
     assert len(messages) <= 20
     assert max(len(message.content) for message in messages) <= 12000
-    assert all(item.point_id in serialized and item.content in serialized for item in items)
+    assert all(
+        item.point_id in serialized
+        and item.content[:1000] in serialized
+        and item.content[-100:] in serialized
+        for item in items
+    )
     assert all(f"PART 1" in message.content for message in messages[2:])
 
 
+@pytest.mark.asyncio
+async def test_fifteen_large_evidence_chunks_are_compacted_without_truncation_or_provider_skip():
+    items = evidence_items(15, content_length=11900)
+    provider = FakeLLMProvider({"claims": [], "verdict": "pass", "reasons": ["evidence received"]})
+    result, provider = await verify(
+        {"claims": [], "verdict": "pass", "reasons": ["evidence received"]},
+        provider=provider,
+        items=items,
+    )
+    serialized = "\n".join(message.content for message in provider.requests[0].messages)
+
+    assert result.verdict == "pass"
+    assert len(provider.requests) == 1
+    assert len(provider.requests[0].messages) <= 20
+    assert max(len(message.content) for message in provider.requests[0].messages) <= 12000
+    assert all(item.point_id in serialized for item in items)
+    assert all(item.content[:1000] in serialized and item.content[-100:] in serialized for item in items)
+
+
 def test_single_large_evidence_item_is_partitioned_without_loss():
-    item = evidence_items(1, content_length=11950)[0]
+    item = evidence_items(1, content_length=12000)[0]
     messages = build_semantic_verification_messages(question="Question", answer="Answer", evidence=[item])
     evidence_messages = messages[2:]
 
@@ -209,7 +233,7 @@ async def test_prompt_capacity_overflow_blocks_without_provider_call():
     result = await ResponseVerificationService(provider=provider).verify(
         question="Question",
         answer="Answer",
-        evidence=evidence_items(10, content_length=12000),
+        evidence=evidence_items(20, content_length=12000),
         public_sources=["CNIL"],
     )
 
@@ -220,7 +244,7 @@ async def test_prompt_capacity_overflow_blocks_without_provider_call():
 
 def test_prompt_capacity_exception_is_explicit():
     with pytest.raises(SemanticVerificationPromptTooLarge):
-        build_semantic_verification_messages(question="Question", answer="Answer", evidence=evidence_items(10, content_length=12000))
+        build_semantic_verification_messages(question="Question", answer="Answer", evidence=evidence_items(20, content_length=12000))
 
 
 @pytest.mark.asyncio
@@ -237,7 +261,7 @@ async def test_agent_retains_internal_verdict_and_public_sources_are_organizatio
     provider = AnswerProvider()
     agent = RegulatoryAgent(retriever=FakeRetriever(evidence() + evidence(point_id="point-2", organization="CNIL")), provider=provider)
     result = await agent.run(AgentRequest(
-        request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question="Q", capability="regulatory", locale="fr", authorized_context=AuthorizedContext(),
+        request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question="Quelles obligations RGPD dois-je vérifier ?", capability="regulatory", locale="fr", authorized_context=AuthorizedContext(),
     ))
     assert result.structured_payload["verification_verdict"] == "pass"
     assert result.sources == ["CNIL"]
@@ -251,3 +275,6 @@ def test_verification_payload_retains_minimized_verdict_reasons_for_trace():
     assert payload["verification_verdict"] == "pass"
     assert "supported" in str(payload["verification_reasons"])
     assert payload["semantic_support"] == "C1:supported"
+    assert payload["supported_claim_count"] == 1
+    assert payload["unsupported_claim_count"] == 0
+    assert payload["unverified_claim_count"] == 0

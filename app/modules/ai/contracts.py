@@ -96,8 +96,13 @@ class AgentResult(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     warnings: list[str] = Field(default_factory=list, max_length=50)
     artifacts: list[str] = Field(default_factory=list, max_length=50)
-    structured_payload: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=70)
-    evidence: list[dict[str, str | int | float | None]] = Field(default_factory=list, max_length=5)
+    # Regulatory fallback and verification diagnostics remain a scalar-only,
+    # bounded projection. The limit covers both execution metadata and the
+    # safe evidence/claim counters needed by pipeline observability.
+    structured_payload: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=110)
+    # The regulatory fallback can merge one bounded top-k result per missing
+    # domain. These remain validated evidence projections, never raw payloads.
+    evidence: list[dict[str, str | int | float | None]] = Field(default_factory=list, max_length=35)
     run_id: uuid.UUID | None = None
     error_code: str | None = Field(default=None, max_length=80)
 

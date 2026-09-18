@@ -26,7 +26,7 @@ class RegulatoryAnswer(BaseModel):
 
     answer: str = Field(min_length=1, max_length=30000)
     sources: list[str] = Field(default_factory=list, max_length=5)
-    evidence: list[RegulatoryEvidence] = Field(default_factory=list, max_length=5)
+    evidence: list[RegulatoryEvidence] = Field(default_factory=list, max_length=35)
 
 
 class RegulatoryQuestion(BaseModel):

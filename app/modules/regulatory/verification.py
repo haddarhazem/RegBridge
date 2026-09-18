@@ -115,7 +115,19 @@ def _question_answer_messages(question: str, answer: str) -> list[LLMMessage]:
 
 
 def _evidence_messages(evidence: list[RegulatoryEvidence]) -> list[LLMMessage]:
+    """Pack lossless labelled evidence parts into the bounded chat contract.
+
+    Evidence used to occupy one chat message per chunk (and a second message
+    for the small tail of a chunk that crossed the per-message limit). The
+    domain-targeted fallback can legitimately supply fifteen chunks, so this
+    representation could exhaust the twenty-message transport limit despite
+    the complete evidence payload fitting within its character budget.
+    Packing keeps every labelled byte while avoiding that transport-only
+    failure mode.
+    """
+
     messages: list[LLMMessage] = []
+    current = ""
     for item in evidence:
         metadata = [
             f"EVIDENCE {item.point_id}",
@@ -125,7 +137,28 @@ def _evidence_messages(evidence: list[RegulatoryEvidence]) -> list[LLMMessage]:
             metadata.append(f"Source domain: {item.source_domain}")
         if item.chunk_index is not None:
             metadata.append(f"Chunk index: {item.chunk_index}")
-        messages.extend(_partition_labeled("\n".join(metadata) + "\nCONTENT", item.content))
+        label = "\n".join(metadata) + "\nCONTENT"
+        remaining = item.content
+        part_number = 1
+        while remaining:
+            separator = "\n\n" if current else ""
+            prefix = f"{label} / PART {part_number}\n"
+            capacity = LLM_MESSAGE_MAX_CHARS - len(current) - len(separator) - len(prefix)
+            if capacity <= 0:
+                if not current:
+                    raise SemanticVerificationPromptTooLarge(LLM_REQUEST_MAX_MESSAGES + 1)
+                messages.append(LLMMessage(role="user", content=current))
+                current = ""
+                continue
+            size = min(len(remaining), capacity)
+            current += separator + prefix + remaining[:size]
+            remaining = remaining[size:]
+            part_number += 1
+            if remaining:
+                messages.append(LLMMessage(role="user", content=current))
+                current = ""
+    if current:
+        messages.append(LLMMessage(role="user", content=current))
     return messages
 
 

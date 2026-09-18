@@ -116,7 +116,15 @@ async def get_copilot_request_status(thread_id: uuid.UUID, request_id: uuid.UUID
     if not runs:
         raise HTTPException(status_code=404, detail="Copilot request not found")
     stage_runs = {run.capability.upper(): run for run in runs if run.agent_name == "copilot-pipeline"}
-    ordered = [PipelineStage.CONTEXT_BUILDING, PipelineStage.RETRIEVING_EVIDENCE, PipelineStage.ASSESSING_EVIDENCE, PipelineStage.GENERATING, PipelineStage.VERIFYING]
+    ordered = [
+        PipelineStage.CONTEXT_BUILDING,
+        PipelineStage.RETRIEVING_EVIDENCE,
+        PipelineStage.ASSESSING_EVIDENCE,
+        PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE,
+        PipelineStage.REASSESSING_EVIDENCE,
+        PipelineStage.GENERATING,
+        PipelineStage.VERIFYING,
+    ]
     stages: list[CopilotStageResponse] = []
     for stage in ordered:
         run = stage_runs.get(stage.value)
@@ -128,10 +136,15 @@ async def get_copilot_request_status(thread_id: uuid.UUID, request_id: uuid.UUID
     failed = next((stage for stage in ordered if (run := stage_runs.get(stage.value)) is not None and run.status == "failed"), None)
     completed = stage_runs.get(PipelineStage.COMPLETED.value)
     cancelled = any(run.status == "cancelled" for run in stage_runs.values())
-    current = PipelineStage.CANCELLED if cancelled else PipelineStage.FAILED if failed else PipelineStage.COMPLETED if completed else next((stage for stage in reversed(ordered) if stage_runs.get(stage.value) is not None and stage_runs[stage.value].status == "running"), PipelineStage.CONTEXT_BUILDING)
+    running_stage = next((stage for stage in reversed(ordered) if stage_runs.get(stage.value) is not None and stage_runs[stage.value].status == "running"), None)
+    latest_started_stage = next((stage for stage in reversed(ordered) if stage_runs.get(stage.value) is not None), PipelineStage.CONTEXT_BUILDING)
+    current = PipelineStage.CANCELLED if cancelled else PipelineStage.FAILED if failed else PipelineStage.COMPLETED if completed else running_stage or latest_started_stage
     status_value = "cancelled" if cancelled else "failed" if failed else "completed" if completed else "running"
     assessment = _stage_payload(stage_runs.get(PipelineStage.ASSESSING_EVIDENCE), PipelineStage.ASSESSING_EVIDENCE) if stage_runs.get(PipelineStage.ASSESSING_EVIDENCE) else {}
-    evidence_status = assessment.get("evidence_status")
+    fallback = _stage_payload(stage_runs.get(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE), PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE) if stage_runs.get(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE) else {}
+    reassessment = _stage_payload(stage_runs.get(PipelineStage.REASSESSING_EVIDENCE), PipelineStage.REASSESSING_EVIDENCE) if stage_runs.get(PipelineStage.REASSESSING_EVIDENCE) else {}
+    final_assessment = reassessment or fallback or assessment
+    evidence_status = final_assessment.get("final_evidence_status") or final_assessment.get("evidence_status")
     try:
         evidence_value = EvidenceStatus(evidence_status) if evidence_status else None
     except ValueError:
@@ -146,10 +159,32 @@ async def get_copilot_request_status(thread_id: uuid.UUID, request_id: uuid.UUID
         verifying = _stage_payload(stage_runs.get(PipelineStage.VERIFYING), PipelineStage.VERIFYING) if stage_runs.get(PipelineStage.VERIFYING) else {}
         diagnostics = CopilotDiagnosticsResponse(
             required_domains=[item for item in str(assessment.get("required_domains") or "").split(", ") if item],
-            covered_domains=[item for item in str(assessment.get("covered_domains") or "").split(", ") if item],
-            missing_domains=[item for item in str(assessment.get("missing_domains") or "").split(", ") if item],
+            covered_domains=[item for item in str(final_assessment.get("final_covered_domains") or final_assessment.get("covered_domains") or "").split(", ") if item],
+            missing_domains=[item for item in str(final_assessment.get("final_missing_domains") or final_assessment.get("missing_domains") or "").split(", ") if item],
             retrieved_chunk_count=retrieval.get("retrieved_chunk_count"), provider=generating.get("provider"), model=generating.get("model"),
             verification_verdict=verifying.get("verification_verdict"), failure_code=failed_run.error_code if failed_run else None,
+            verification_reason=verifying.get("verification_reason"),
+            semantic_claim_count=verifying.get("semantic_claim_count"),
+            supported_claim_count=verifying.get("supported_claim_count"),
+            unsupported_claim_count=verifying.get("unsupported_claim_count"),
+            unverified_claim_count=verifying.get("unverified_claim_count"),
+            resolution_source=assessment.get("resolution_source"),
+            matched_signals=[item for item in str(assessment.get("matched_signals") or "").split(", ") if item],
+            needs_clarification=bool(assessment.get("needs_clarification")),
+            initial_evidence_count=assessment.get("initial_evidence_count"),
+            initial_evidence_status=assessment.get("initial_evidence_status") or assessment.get("evidence_status"),
+            initial_covered_domains=[item for item in str(assessment.get("initial_covered_domains") or assessment.get("covered_domains") or "").split(", ") if item],
+            initial_missing_domains=[item for item in str(assessment.get("initial_missing_domains") or assessment.get("missing_domains") or "").split(", ") if item],
+            fallback_attempted=bool(fallback.get("fallback_attempted")),
+            fallback_domains=[item for item in str(fallback.get("fallback_domains") or "").split(", ") if item],
+            fallback_evidence_count=fallback.get("fallback_evidence_count"),
+            fallback_unique_evidence_count=fallback.get("fallback_unique_evidence_count"),
+            fallback_failed_domains=[item for item in str(fallback.get("fallback_failed_domains") or "").split(", ") if item],
+            fallback_failure_count=fallback.get("fallback_failure_count"),
+            final_evidence_count=final_assessment.get("final_evidence_count") or fallback.get("final_evidence_count") or assessment.get("initial_evidence_count"),
+            final_evidence_status=final_assessment.get("final_evidence_status") or final_assessment.get("evidence_status"),
+            final_covered_domains=[item for item in str(final_assessment.get("final_covered_domains") or final_assessment.get("covered_domains") or "").split(", ") if item],
+            final_missing_domains=[item for item in str(final_assessment.get("final_missing_domains") or final_assessment.get("missing_domains") or "").split(", ") if item],
         )
     return CopilotRequestStatusResponse(
         request_id=request_id, status=status_value, current_stage=current, evidence_status=evidence_value,

@@ -75,7 +75,7 @@ class StableRegulatoryRetriever:
             retrieval_score=0.99,
             organization="CNIL",
             source_domain="cnil.fr",
-            content="Les obligations applicables dÃ©pendent du traitement de donnÃ©es dÃ©crit.",
+            content="Les obligations applicables au traitement des donnees personnelles doivent etre verifiees.",
         )]
 
 
@@ -240,7 +240,7 @@ async def test_real_regulatory_agent_path_persists_correlated_traces(
 
         async with vertical_factory() as session:
             request = OrchestrationRequest(
-                question="Quelles obligations principales s'appliquent Ã  ce traitement ?",
+                question="Quelles obligations RGPD principales s'appliquent Ã  ce traitement ?",
                 principal=owner,
                 subject_type="project",
                 subject_id=project_id,

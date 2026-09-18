@@ -27,7 +27,7 @@ class FakeProvider:
         return LLMGenerationResponse(content=self.content, model="fake-model")
 
 
-def request(question="Question réglementaire", context=None):
+def request(question="Quelles obligations RGPD dois-je vérifier ?", context=None):
     return AgentRequest(
         request_id=uuid.uuid4(),
         parent_run_id=uuid.uuid4(),
