@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -18,6 +20,9 @@ class RegulatoryEvidence(BaseModel):
     url: str | None = Field(default=None, max_length=2000)
     parent_url: str | None = Field(default=None, max_length=2000)
     chunk_index: int | None = Field(default=None, ge=0)
+    title: str | None = Field(default=None, max_length=500)
+    retrieved_at: datetime | None = None
+    provenance_type: Literal["QDRANT_CORPUS", "LIVE_AUTHORITATIVE"] = "QDRANT_CORPUS"
     content: str = Field(min_length=1, max_length=12000)
 
 

@@ -30,6 +30,23 @@ class RequiredDomainResolution(BaseModel):
     needs_clarification: bool = False
 
 
+class QuestionScope(StrEnum):
+    GENERAL_INFORMATION = "GENERAL_INFORMATION"
+    GENERAL_OBLIGATIONS = "GENERAL_OBLIGATIONS"
+    PROJECT_SPECIFIC = "PROJECT_SPECIFIC"
+    SECTOR_SPECIFIC = "SECTOR_SPECIFIC"
+    CLASSIFICATION_SPECIFIC = "CLASSIFICATION_SPECIFIC"
+
+
+class QuestionScopeResolution(BaseModel):
+    """Small, deterministic description of the answer specificity requested."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: QuestionScope
+    matched_signals: list[str] = Field(default_factory=list, max_length=12)
+
+
 class EvidenceAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +59,11 @@ class EvidenceAssessment(BaseModel):
     total_evidence_count: int = Field(ge=0, le=35)
     status: EvidenceStatus
     domain_reasons: dict[str, str] = Field(default_factory=dict, max_length=6)
+    question_scope: QuestionScope
+    scope_matched_signals: list[str] = Field(default_factory=list, max_length=12)
+    scope_supported: bool = False
+    scope_unsupported_domains: list[str] = Field(default_factory=list, max_length=6)
+    scope_support_reasons: list[str] = Field(default_factory=list, max_length=6)
     resolution_source: ResolutionSource
     matched_signals: list[str] = Field(default_factory=list, max_length=12)
     needs_clarification: bool = False
@@ -68,6 +90,22 @@ _EVIDENCE_TERMS = {
     "SECURITY_CLOUD": ("cybersecurite", "securite", "cloud", "hebergement", "anssi", "incident", "authentification"),
 }
 _SUBSTANTIVE_TERMS = ("obligation", "obligations", "doit", "doivent", "exige", "requis", "applicable", "responsable", "mesure", "declaration", "conformite", "protection", "droit", "droits", "regle", "regles", "officiel", "reglementaire", "reglementaires")
+_OBLIGATION_TERMS = ("obligation", "obligations", "doit", "doivent", "exige", "requis", "obligatoire", "interdit", "tenu", "responsable", "soumis")
+_APPLICABILITY_TERMS = ("s applique", "applicable", "soumis", "condition", "conditions", "lorsque", "si ", "dans le cas", "responsable", "tenu")
+_CONTEXTUAL_APPLICABILITY_TERMS = ("s applique", "soumis", "condition", "conditions", "lorsque", "si ", "dans le cas", "responsable", "tenu")
+_DEFINITION_TERMS = ("reglement", "cadre", "protection", "definition", "definit", "concerne", "vise")
+_CLASSIFICATION_TERMS = ("classification", "classer", "categorie", "niveau de risque", "haut risque", "risque", "regime")
+_CLASSIFICATION_CRITERIA_TERMS = ("critere", "criteres", "annexe", "finalite", "destine", "usage", "utilise", "deploie", "lorsque", "si ")
+_SECTOR_TERMS = ("compteur", "compteurs", "iot", "capteur", "capteurs", "energie", "energetique", "linky", "gazpar")
+_SECTOR_BINDING_TERMS = ("exploitant", "operateur", "fournisseur", "fabricant", "mise sur le marche", "installation", "deploiement")
+_PROJECT_TERMS = {
+    "PRIVACY": ("traitement", "donnees personnelles", "responsable"),
+    "AI": ("systeme", "intelligence artificielle", "modele", "algorithme"),
+    "SECURITY_CLOUD": ("saas", "cloud", "hebergement", "service numerique"),
+    "ENERGY_IOT": ("compteur", "iot", "capteur", "energie"),
+    "GENERAL_BUSINESS": ("entreprise", "societe", "activite"),
+    "CONTRACTS": ("contrat", "cgv", "cgu", "clause"),
+}
 _LABELS = {
     "GENERAL_BUSINESS": "création et gestion de l’entreprise",
     "PRIVACY": "protection des données personnelles",
@@ -104,7 +142,28 @@ class MissingDomainQueryBuilder:
         "GENERAL_BUSINESS": (),
     }
 
-    def build(self, question: str, missing_domain: str, context: AuthorizedContext) -> str:
+    _SCOPE_TERMS = {
+        QuestionScope.PROJECT_SPECIFIC: {
+            "SECURITY_CLOUD": ("obligations cybersecurite applicables", "saas cloud hebergement donnees entreprise france"),
+            "PRIVACY": ("obligations applicables traitement donnees entreprise france",),
+            "AI": ("obligations applicables systeme ia entreprise france",),
+            "ENERGY_IOT": ("obligations applicables compteurs iot energie entreprise france",),
+        },
+        QuestionScope.SECTOR_SPECIFIC: {
+            "ENERGY_IOT": ("obligations sectorielles reglementation compteurs iot energetiques dispositifs mesure energie france",),
+        },
+        QuestionScope.CLASSIFICATION_SPECIFIC: {
+            "AI": ("ai act classification niveau risque criteres applicabilite systeme ia entreprise france union europeenne",),
+        },
+    }
+
+    def build(
+        self,
+        question: str,
+        missing_domain: str,
+        context: AuthorizedContext,
+        scope: QuestionScopeResolution | None = None,
+    ) -> str:
         if missing_domain not in self._CANONICAL_TERMS:
             raise ValueError(f"Unsupported regulatory domain: {missing_domain}")
         # Keep the user's subject while bounding the retrieval string.  This
@@ -118,7 +177,8 @@ class MissingDomainQueryBuilder:
             term for term in self._CONTEXT_TERMS[missing_domain]
             if _matches(context_text, term)
         ][:2]
-        return " ".join(dict.fromkeys((subject, *self._CANONICAL_TERMS[missing_domain], *contextual)))
+        scope_terms = self._SCOPE_TERMS.get(scope.scope if scope else QuestionScope.GENERAL_OBLIGATIONS, {}).get(missing_domain, ())
+        return " ".join(dict.fromkeys((subject, *self._CANONICAL_TERMS[missing_domain], *scope_terms, *contextual)))[:500]
 
 
 def _normal(value: str | None) -> str:
@@ -181,23 +241,68 @@ class RequiredDomainResolver:
         return [domain for domain in _DOMAINS if domain in values]
 
 
+class QuestionScopeResolver:
+    """Classify only the specificity requested by a question; never use an LLM."""
+
+    _GENERAL_INFORMATION = ("what is", "qu est ce que", "definition", "signifie")
+    _SECTOR_SPECIFIC = ("sectoriel", "sectorielle", "specifique au secteur", "specifiques au secteur", "specifique a", "specifiques a", "pour mes compteurs", "pour mes capteurs")
+    _CLASSIFICATION_SPECIFIC = ("classification", "classer", "niveau de risque", "haut risque", "quelle categorie", "precisement mon systeme", "quel regime", "est ce que mon systeme est")
+    _PROJECT_SPECIFIC = ("mon projet", "mon saas", "ma plateforme", "mon systeme", "dans mon cas", "s applique a", "s appliquent a")
+    _OBLIGATIONS = ("obligation", "obligations", "exigence", "exigences", "reglement", "regles", "conformite", "dois je")
+
+    def resolve(self, question: str) -> QuestionScopeResolution:
+        normalized = _normal(question)
+        for scope, signals in (
+            (QuestionScope.CLASSIFICATION_SPECIFIC, self._CLASSIFICATION_SPECIFIC),
+            (QuestionScope.SECTOR_SPECIFIC, self._SECTOR_SPECIFIC),
+            (QuestionScope.PROJECT_SPECIFIC, self._PROJECT_SPECIFIC),
+            (QuestionScope.GENERAL_INFORMATION, self._GENERAL_INFORMATION),
+        ):
+            matched = _matched_signals(normalized, signals)
+            if matched:
+                return QuestionScopeResolution(scope=scope, matched_signals=[f"question_scope:{signal}" for signal in matched])
+        matched = _matched_signals(normalized, self._OBLIGATIONS)
+        if matched:
+            return QuestionScopeResolution(scope=QuestionScope.GENERAL_OBLIGATIONS, matched_signals=[f"question_scope:{signal}" for signal in matched])
+        return QuestionScopeResolution(scope=QuestionScope.GENERAL_INFORMATION, matched_signals=["question_scope:default_general_information"])
+
+
 class EvidenceSufficiencyEvaluator:
     """Assess retrieved evidence against an already-resolved domain scope."""
 
-    def evaluate(self, resolution: RequiredDomainResolution, evidence: list[RegulatoryEvidence]) -> EvidenceAssessment:
+    def evaluate(
+        self,
+        resolution: RequiredDomainResolution,
+        evidence: list[RegulatoryEvidence],
+        scope: QuestionScopeResolution | None = None,
+        context: AuthorizedContext | None = None,
+    ) -> EvidenceAssessment:
+        scope = scope or QuestionScopeResolution(
+            scope=QuestionScope.GENERAL_OBLIGATIONS,
+            matched_signals=["question_scope:compatibility_general_obligations"],
+        )
         required = resolution.required_domains
         matches: dict[str, list[RegulatoryEvidence]] = {domain: [] for domain in required}
         for item in evidence:
             text = _normal(" ".join((item.organization, item.source_domain or "", item.content)))
             substantive = any(_matches(text, signal) for signal in _SUBSTANTIVE_TERMS)
+            conceptual = any(_matches(text, signal) for signal in _DEFINITION_TERMS)
             for domain in required:
                 topic = domain == "GENERAL_BUSINESS" or any(_matches(text, signal) for signal in _EVIDENCE_TERMS[domain])
-                if topic and substantive and (domain == "GENERAL_BUSINESS" or len(item.content.split()) >= 8):
+                useful = (conceptual or substantive) if scope.scope == QuestionScope.GENERAL_INFORMATION else substantive
+                if topic and useful and (domain == "GENERAL_BUSINESS" or len(item.content.split()) >= 8):
                     matches[domain].append(item)
         covered = [domain for domain in required if matches[domain]]
         missing = [domain for domain in required if domain not in covered]
         useful = {item.point_id for items in matches.values() for item in items}
-        status = EvidenceStatus.INSUFFICIENT if not evidence or not covered else EvidenceStatus.PARTIAL if missing else EvidenceStatus.SUFFICIENT
+        scope_supported, scope_unsupported_domains, scope_reasons = self._scope_supported(scope, matches, context)
+        status = (
+            EvidenceStatus.INSUFFICIENT
+            if not evidence or not covered
+            else EvidenceStatus.PARTIAL
+            if missing or not scope_supported
+            else EvidenceStatus.SUFFICIENT
+        )
         reasons = {
             domain: (
                 f"covered; matched_chunks={len(matches[domain])}; organizations={', '.join(dict.fromkeys(item.organization for item in matches[domain]))}"
@@ -208,7 +313,83 @@ class EvidenceSufficiencyEvaluator:
             required_domains=required, covered_domains=covered, missing_domains=missing,
             useful_evidence_count=len(useful), total_evidence_count=len(evidence), status=status,
             domain_reasons=reasons, resolution_source=resolution.resolution_source,
+            question_scope=scope.scope, scope_matched_signals=scope.matched_signals,
+            scope_supported=scope_supported, scope_unsupported_domains=scope_unsupported_domains, scope_support_reasons=scope_reasons,
             matched_signals=resolution.matched_signals, needs_clarification=resolution.needs_clarification,
+        )
+
+    @staticmethod
+    def _scope_supported(
+        scope: QuestionScopeResolution,
+        matches: dict[str, list[RegulatoryEvidence]],
+        context: AuthorizedContext | None,
+    ) -> tuple[bool, list[str], list[str]]:
+        if not matches or not any(matches.values()):
+            return False, [], ["scope_not_supported; no_useful_required_domain_evidence"]
+        supported_domains = [
+            domain for domain, items in matches.items()
+            if EvidenceSufficiencyEvaluator._domain_supports_scope(scope.scope, domain, items, context)
+        ]
+        required = list(matches)
+        if required and set(supported_domains) == set(required):
+            return True, [], [f"scope_supported; scope={scope.scope.value}; supported_domains={', '.join(supported_domains)}"]
+        missing = [domain for domain in required if domain not in supported_domains]
+        scope_gaps = [domain for domain in missing if matches[domain]]
+        return False, scope_gaps, [f"scope_not_supported; scope={scope.scope.value}; insufficient_specificity_domains={', '.join(missing)}"]
+
+    @staticmethod
+    def _domain_supports_scope(
+        scope: QuestionScope,
+        domain: str,
+        items: list[RegulatoryEvidence],
+        context: AuthorizedContext | None,
+    ) -> bool:
+        texts = [_normal(" ".join((item.organization, item.source_domain or "", item.content))) for item in items]
+        if scope == QuestionScope.GENERAL_INFORMATION:
+            # Topic coverage was already established before this scope check.
+            # A source can explain a concept through concrete obligations as
+            # well as an explicit dictionary-style definition.
+            return bool(texts)
+        if scope == QuestionScope.GENERAL_OBLIGATIONS:
+            return any(any(_matches(text, term) for term in _OBLIGATION_TERMS) for text in texts)
+        if scope == QuestionScope.CLASSIFICATION_SPECIFIC:
+            return any(
+                any(_matches(text, term) for term in _OBLIGATION_TERMS)
+                and any(_matches(text, term) for term in _CLASSIFICATION_TERMS)
+                and any(_matches(text, term) for term in _CLASSIFICATION_CRITERIA_TERMS)
+                and any(_matches(text, term) for term in _CONTEXTUAL_APPLICABILITY_TERMS)
+                and EvidenceSufficiencyEvaluator._has_confirmed_context_match(text, domain, context)
+                for text in texts
+            )
+        if scope == QuestionScope.SECTOR_SPECIFIC:
+            return any(
+                any(_matches(text, term) for term in _OBLIGATION_TERMS)
+                and any(_matches(text, term) for term in _CONTEXTUAL_APPLICABILITY_TERMS)
+                and any(_matches(text, term) for term in _SECTOR_BINDING_TERMS)
+                and sum(_matches(text, term) for term in _SECTOR_TERMS) >= 2
+                and EvidenceSufficiencyEvaluator._has_confirmed_context_match(text, domain, context)
+                for text in texts
+            )
+        return any(
+            any(_matches(text, term) for term in _OBLIGATION_TERMS)
+            and any(_matches(text, term) for term in _CONTEXTUAL_APPLICABILITY_TERMS)
+            and EvidenceSufficiencyEvaluator._has_confirmed_context_match(text, domain, context)
+            for text in texts
+        )
+
+    @staticmethod
+    def _has_confirmed_context_match(text: str, domain: str, context: AuthorizedContext | None) -> bool:
+        """Require a bounded project characteristic without serialising it."""
+
+        if context is None:
+            return False
+        context_text = _normal(" ".join(str(value or "") for value in (
+            context.activity, context.sector, context.technology, context.data_context,
+            context.target_market, context.location,
+        )))
+        return any(
+            _matches(text, term) and _matches(context_text, term)
+            for term in _PROJECT_TERMS.get(domain, ())
         )
 
 

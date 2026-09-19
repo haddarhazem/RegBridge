@@ -140,6 +140,8 @@
     ASSESSING_EVIDENCE: 'Évaluation des sources',
     RETRIEVING_MISSING_DOMAIN_EVIDENCE: 'Recherche complémentaire des sources',
     REASSESSING_EVIDENCE: 'Réévaluation des sources',
+    RETRIEVING_AUTHORITATIVE_EVIDENCE: 'Recherche des sources officielles',
+    REASSESSING_AUTHORITATIVE_EVIDENCE: 'Réévaluation des sources',
     GENERATING: 'Génération de la réponse',
     VERIFYING: 'Vérification de la réponse',
     COMPLETED: 'Terminé',
@@ -160,7 +162,7 @@
     const diagnosticsContent = document.querySelector('[data-copilot-diagnostics-content]');
     if (!label || !progress || !diagnostics || !diagnosticsContent) return;
     const stages = (Array.isArray(status?.stages) ? status.stages : []).filter((item) => (
-      !['RETRIEVING_MISSING_DOMAIN_EVIDENCE', 'REASSESSING_EVIDENCE'].includes(item.stage)
+      !['RETRIEVING_MISSING_DOMAIN_EVIDENCE', 'REASSESSING_EVIDENCE', 'RETRIEVING_AUTHORITATIVE_EVIDENCE', 'REASSESSING_AUTHORITATIVE_EVIDENCE'].includes(item.stage)
       || item.status !== 'not_started'
     ));
     label.textContent = copilotStageLabels[status?.current_stage] || 'Connexion au Copilote';
@@ -174,16 +176,24 @@
         ['À vérifier', (data.missing_domains || []).join(', ')], ['Fournisseur / modèle', [data.provider, data.model].filter(Boolean).join(' / ')],
         ['Dérivation', data.resolution_source], ['Signaux', (data.matched_signals || []).join(', ')],
         ['Précision requise', data.needs_clarification ? 'Oui' : 'Non'], ['Vérification', data.verification_verdict], ['Code échec', data.failure_code],
+        ['Question scope', data.question_scope], ['Scope signals', (data.scope_signals || []).join(', ')],
+        ['Scope supported', data.scope_supported === true ? 'Yes' : data.scope_supported === false ? 'No' : null], ['Scope reason', data.scope_support_reason],
         ['Verification reason', data.verification_reason], ['Claims analysed', data.semantic_claim_count],
         ['Supported claims', data.supported_claim_count], ['Unsupported claims', data.unsupported_claim_count],
         ['Unverified claims', data.unverified_claim_count],
         ['Sources initiales', data.initial_evidence_count], ['Statut initial', data.initial_evidence_status],
         ['Couverts initialement', (data.initial_covered_domains || []).join(', ')], ['Manquants initialement', (data.initial_missing_domains || []).join(', ')],
+        ['Initial question scope', data.initial_question_scope], ['Initial scope supported', data.initial_scope_supported === true ? 'Yes' : data.initial_scope_supported === false ? 'No' : null], ['Initial scope reason', data.initial_scope_support_reason],
         ['Recherche complémentaire', data.fallback_attempted ? 'Oui' : 'Non'], ['Domaines recherchés', (data.fallback_domains || []).join(', ')],
         ['Sources complémentaires', data.fallback_evidence_count], ['Nouvelles sources uniques', data.fallback_unique_evidence_count],
         ['Échecs complémentaires', (data.fallback_failed_domains || []).join(', ')], ['Sources finales', data.final_evidence_count],
         ['Statut final', data.final_evidence_status], ['Couverts finalement', (data.final_covered_domains || []).join(', ')],
         ['Manquants finalement', (data.final_missing_domains || []).join(', ')],
+        ['Final question scope', data.final_question_scope], ['Final scope supported', data.final_scope_supported === true ? 'Yes' : data.final_scope_supported === false ? 'No' : null], ['Final scope reason', data.final_scope_support_reason],
+        ['Sources officielles consultées', data.authoritative_fallback_attempted ? 'Oui' : 'Non'],
+        ['Sources officielles', (data.authoritative_sources_attempted || []).join(', ')],
+        ['Sources officielles indisponibles', (data.authoritative_sources_failed || []).join(', ')],
+        ['Extraits officiels retenus', data.authoritative_external_evidence_count],
       ].filter(([, value]) => value !== null && value !== undefined && value !== '');
       diagnosticsContent.innerHTML = rows.map(([key, value]) => `<dt>${views.escape(key)}</dt><dd>${views.escape(String(value))}</dd>`).join('');
     }

@@ -21,10 +21,12 @@ from app.modules.regulatory.contracts import RegulatoryEvidence
 from app.modules.regulatory.evidence_sufficiency import (
     EvidenceSufficiencyEvaluator,
     MissingDomainQueryBuilder,
+    QuestionScopeResolver,
     RequiredDomainResolver,
     public_domain_labels,
 )
 from app.modules.regulatory.retrieval import RegulatoryRetriever, RegulatoryRetrievalError
+from app.modules.regulatory.authoritative_sources import AuthoritativeSourceRetriever
 from app.modules.regulatory.verification import ResponseVerificationService, VerificationResult
 from app.modules.ai.pipeline import PipelineStageRecorder
 from app.modules.ai.pipeline_types import EvidenceStatus, PipelineStage
@@ -69,7 +71,7 @@ class RegulatoryAgent(Agent):
     name = "regulatory-agent"
     capabilities = ("regulatory",)
 
-    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, evaluator: EvidenceSufficiencyEvaluator | None = None, resolver: RequiredDomainResolver | None = None, query_builder: MissingDomainQueryBuilder | None = None, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
+    def __init__(self, *, retriever: RegulatoryRetriever, provider: LLMProvider, verifier: ResponseVerificationService | None = None, evaluator: EvidenceSufficiencyEvaluator | None = None, resolver: RequiredDomainResolver | None = None, scope_resolver: QuestionScopeResolver | None = None, query_builder: MissingDomainQueryBuilder | None = None, authoritative_retriever: AuthoritativeSourceRetriever | None = None, authoritative_fallback_enabled: bool = False, generation_max_tokens: int = 900, verification_max_tokens: int = 900, structured_assessment: bool = False) -> None:
         self.retriever = retriever
         self.provider = provider
         self.generation_max_tokens = generation_max_tokens
@@ -77,7 +79,10 @@ class RegulatoryAgent(Agent):
         self.verifier = verifier or ResponseVerificationService(provider=provider, max_tokens=verification_max_tokens)
         self.evaluator = evaluator or EvidenceSufficiencyEvaluator()
         self.resolver = resolver or RequiredDomainResolver()
+        self.scope_resolver = scope_resolver or QuestionScopeResolver()
         self.query_builder = query_builder or MissingDomainQueryBuilder()
+        self.authoritative_retriever = authoritative_retriever or AuthoritativeSourceRetriever(query_builder=self.query_builder)
+        self.authoritative_fallback_enabled = authoritative_fallback_enabled
 
     async def run(self, request: AgentRequest, *, pipeline: PipelineStageRecorder | None = None) -> AgentResult:
         if not request.question.strip():
@@ -89,6 +94,7 @@ class RegulatoryAgent(Agent):
         if requests_document_context(request.question) and request.authorized_context.document is None and request.authorized_context.contract_analysis is None:
             return self._context_only_result("Sélectionnez un document ou ouvrez une analyse pour poser une question sur ce document.", "document_context_unavailable")
         resolution = self.resolver.resolve(request.question, request.authorized_context)
+        scope = self.scope_resolver.resolve(request.question)
         if resolution.needs_clarification:
             resolution_payload = _resolution_payload(resolution)
             if pipeline is not None:
@@ -116,7 +122,7 @@ class RegulatoryAgent(Agent):
         if pipeline is not None:
             await pipeline.start(PipelineStage.ASSESSING_EVIDENCE)
         try:
-            evidence_assessment = self.evaluator.evaluate(resolution, evidence)
+            evidence_assessment = self.evaluator.evaluate(resolution, evidence, scope, request.authorized_context)
         except Exception:
             if pipeline is not None:
                 await pipeline.fail(PipelineStage.ASSESSING_EVIDENCE, error_code="EVIDENCE_ASSESSMENT_FAILED", error_message="Evidence coverage could not be assessed")
@@ -138,14 +144,21 @@ class RegulatoryAgent(Agent):
             final_assessment=initial_assessment,
         )
         fallback_warnings: list[str] = []
+        targeted_fallback_completed = False
         if initial_assessment.status in {EvidenceStatus.PARTIAL, EvidenceStatus.INSUFFICIENT}:
-            missing_domains = initial_assessment.missing_domains
+            # A domain can be topically covered yet still lack evidence needed
+            # for a project, sector, or classification-specific answer. Add a
+            # bounded scope-aware supplement only for that covered domain.
+            fallback_domains = list(dict.fromkeys([
+                *initial_assessment.missing_domains,
+                *initial_assessment.scope_unsupported_domains,
+            ]))
             if pipeline is not None:
                 await pipeline.start(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE)
             fallback_evidence: list[RegulatoryEvidence] = []
             failed_domains: list[str] = []
-            for domain in missing_domains:
-                query = self.query_builder.build(request.question, domain, request.authorized_context)
+            for domain in fallback_domains:
+                query = self.query_builder.build(request.question, domain, request.authorized_context, scope)
                 try:
                     fallback_evidence.extend(await self.retriever.retrieve(query))
                 except RegulatoryRetrievalError:
@@ -154,7 +167,7 @@ class RegulatoryAgent(Agent):
             evidence = _merge_evidence(initial_evidence, fallback_evidence)
             fallback_payload = _fallback_payload(
                 attempted=True,
-                domains=missing_domains,
+                domains=fallback_domains,
                 initial_evidence_count=len(initial_evidence),
                 fallback_evidence_count=len(fallback_evidence),
                 fallback_unique_evidence_count=max(len(evidence) - len(initial_evidence), 0),
@@ -163,7 +176,7 @@ class RegulatoryAgent(Agent):
                 final_assessment=initial_assessment,
                 failed_domains=failed_domains,
             )
-            if failed_domains and len(failed_domains) == len(missing_domains):
+            if failed_domains and len(failed_domains) == len(fallback_domains):
                 if pipeline is not None:
                     await pipeline.fail(
                         PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE,
@@ -184,14 +197,14 @@ class RegulatoryAgent(Agent):
                 await pipeline.succeed(PipelineStage.RETRIEVING_MISSING_DOMAIN_EVIDENCE, fallback_payload)
                 await pipeline.start(PipelineStage.REASSESSING_EVIDENCE)
             try:
-                evidence_assessment = self.evaluator.evaluate(resolution, evidence)
+                evidence_assessment = self.evaluator.evaluate(resolution, evidence, scope, request.authorized_context)
             except Exception:
                 if pipeline is not None:
                     await pipeline.fail(PipelineStage.REASSESSING_EVIDENCE, error_code="EVIDENCE_ASSESSMENT_FAILED", error_message="Merged evidence coverage could not be assessed")
                 return self._failure("evidence_assessment_failed", "Merged evidence coverage could not be assessed")
             fallback_payload = _fallback_payload(
                 attempted=True,
-                domains=missing_domains,
+                domains=fallback_domains,
                 initial_evidence_count=len(initial_evidence),
                 fallback_evidence_count=len(fallback_evidence),
                 fallback_unique_evidence_count=max(len(evidence) - len(initial_evidence), 0),
@@ -202,8 +215,80 @@ class RegulatoryAgent(Agent):
             )
             if pipeline is not None:
                 await pipeline.succeed(PipelineStage.REASSESSING_EVIDENCE, {**_assessment_payload(evidence_assessment), **fallback_payload})
+            targeted_fallback_completed = True
 
-        assessment_payload = {**_assessment_payload(evidence_assessment), **fallback_payload}
+        authoritative_payload = _authoritative_fallback_payload(
+            attempted=False,
+            domains=[],
+            attempted_sources=[],
+            succeeded_sources=[],
+            failed_sources=[],
+            external_evidence_count=0,
+            external_unique_evidence_count=0,
+            final_evidence_count=len(evidence),
+            before_assessment=evidence_assessment,
+            after_assessment=evidence_assessment,
+        )
+        # The official-source branch is a supplement, never a replacement for
+        # the deterministic corpus path.  It is intentionally reachable only
+        # after the bounded Qdrant supplement has completed and remained
+        # incomplete.
+        if self.authoritative_fallback_enabled and targeted_fallback_completed and evidence_assessment.status in {EvidenceStatus.PARTIAL, EvidenceStatus.INSUFFICIENT}:
+            authoritative_domains = list(dict.fromkeys([
+                *evidence_assessment.missing_domains,
+                *evidence_assessment.scope_unsupported_domains,
+            ]))
+            selected_sources = self.authoritative_retriever.registry.select(authoritative_domains, request.authorized_context)
+            if selected_sources:
+                before_authoritative_assessment = evidence_assessment
+                if pipeline is not None:
+                    await pipeline.start(PipelineStage.RETRIEVING_AUTHORITATIVE_EVIDENCE)
+                retrieval = await self.authoritative_retriever.retrieve(
+                    question=request.question,
+                    domains=authoritative_domains,
+                    scope=scope,
+                    context=request.authorized_context,
+                )
+                evidence = _merge_evidence(evidence, retrieval.evidence)
+                authoritative_payload = _authoritative_fallback_payload(
+                    attempted=True,
+                    domains=authoritative_domains,
+                    attempted_sources=retrieval.attempted_sources,
+                    succeeded_sources=retrieval.succeeded_sources,
+                    failed_sources=retrieval.failed_sources,
+                    external_evidence_count=len(retrieval.evidence),
+                    external_unique_evidence_count=max(len(evidence) - fallback_payload["final_evidence_count"], 0),
+                    final_evidence_count=len(evidence),
+                    before_assessment=before_authoritative_assessment,
+                    after_assessment=before_authoritative_assessment,
+                )
+                if pipeline is not None:
+                    await pipeline.succeed(PipelineStage.RETRIEVING_AUTHORITATIVE_EVIDENCE, authoritative_payload)
+                    await pipeline.start(PipelineStage.REASSESSING_AUTHORITATIVE_EVIDENCE)
+                try:
+                    evidence_assessment = self.evaluator.evaluate(resolution, evidence, scope, request.authorized_context)
+                except Exception:
+                    if pipeline is not None:
+                        await pipeline.fail(PipelineStage.REASSESSING_AUTHORITATIVE_EVIDENCE, error_code="EVIDENCE_ASSESSMENT_FAILED", error_message="Authoritative evidence coverage could not be assessed")
+                    return self._failure("evidence_assessment_failed", "Evidence coverage could not be assessed")
+                authoritative_payload = _authoritative_fallback_payload(
+                    attempted=True,
+                    domains=authoritative_domains,
+                    attempted_sources=retrieval.attempted_sources,
+                    succeeded_sources=retrieval.succeeded_sources,
+                    failed_sources=retrieval.failed_sources,
+                    external_evidence_count=len(retrieval.evidence),
+                    external_unique_evidence_count=max(len(evidence) - fallback_payload["final_evidence_count"], 0),
+                    final_evidence_count=len(evidence),
+                    before_assessment=before_authoritative_assessment,
+                    after_assessment=evidence_assessment,
+                )
+                if retrieval.failed_sources:
+                    fallback_warnings.append("Certaines sources officielles nâ€™ont pas pu Ãªtre consultÃ©es ; les sources disponibles sont conservÃ©es.")
+                if pipeline is not None:
+                    await pipeline.succeed(PipelineStage.REASSESSING_AUTHORITATIVE_EVIDENCE, {**_assessment_payload(evidence_assessment), **authoritative_payload})
+
+        assessment_payload = {**_assessment_payload(evidence_assessment), **fallback_payload, **authoritative_payload}
         if evidence_assessment.status == EvidenceStatus.INSUFFICIENT:
             # Preserve the original direct-agent contract for callers that do
             # not participate in the observable Copilot pipeline. Existing
@@ -221,7 +306,7 @@ class RegulatoryAgent(Agent):
                     status="succeeded",
                     answer="Les sources réglementaires disponibles ne couvrent pas suffisamment cette question. Certains domaines doivent encore être vérifiés.",
                     sources=_unique_organizations(evidence),
-                    evidence=[item.model_dump() for item in evidence],
+                    evidence=[item.model_dump(mode="json") for item in evidence],
                     warnings=["Les sources disponibles ne permettent pas de répondre de manière fiable sur tous les points."],
                     structured_payload={"evidence_status": evidence_assessment.status.value, **assessment_payload, "generation_skipped": True},
                 )
@@ -240,6 +325,7 @@ class RegulatoryAgent(Agent):
                 evidence_prompt,
                 partial=evidence_assessment.status == EvidenceStatus.PARTIAL,
                 missing_domains=public_domain_labels(evidence_assessment.missing_domains),
+                scope_supported=not bool(evidence_assessment.scope_unsupported_domains),
             )
             response_format = None
             if self.structured_assessment:
@@ -329,7 +415,7 @@ class RegulatoryAgent(Agent):
             recommendations=[_safe_public_answer(value, evidence, request) for value in draft.recommendations] if draft else [],
             missing_information=[_safe_public_answer(value, evidence, request) for value in draft.missing_information] if draft else [],
             sources=public_sources,
-            evidence=[item.model_dump() for item in evidence],
+            evidence=[item.model_dump(mode="json") for item in evidence],
             structured_payload={
                 "retrieval_method": "dense",
                 "embedding_model": "BAAI/bge-m3",
@@ -349,8 +435,11 @@ class RegulatoryAgent(Agent):
                 **_verification_payload(verification),
             },
             warnings=fallback_warnings + ([] if verification.verdict == "pass" else verification.reasons) + (
-                ["Les sources disponibles permettent de répondre sur certains points, mais la couverture est incomplète."]
-                if evidence_assessment.status == EvidenceStatus.PARTIAL else []
+                [
+                    "Les sources disponibles permettent de répondre sur certains points, mais ne permettent pas de confirmer précisément leur application à votre situation."
+                    if evidence_assessment.scope_unsupported_domains
+                    else "Les sources disponibles permettent de répondre sur certains points, mais la couverture est incomplète."
+                ] if evidence_assessment.status == EvidenceStatus.PARTIAL else []
             ),
         )
 
@@ -392,7 +481,7 @@ class RegulatoryAgent(Agent):
             status="succeeded",
             answer="Les sources réglementaires disponibles ne couvrent pas suffisamment cette question. Certains domaines doivent encore être vérifiés.",
             sources=_unique_organizations(evidence),
-            evidence=[item.model_dump() for item in evidence],
+            evidence=[item.model_dump(mode="json") for item in evidence],
             warnings=warnings,
             structured_payload={"evidence_status": assessment.status.value, **payload, "generation_skipped": True},
         )
@@ -468,13 +557,26 @@ def _partition_labeled(label: str, value: str) -> list[LLMMessage]:
     return messages
 
 
-def _generation_messages(question: str, context: str, evidence: str, *, partial: bool = False, missing_domains: list[str] | None = None) -> list[LLMMessage]:
+def _generation_messages(
+    question: str,
+    context: str,
+    evidence: str,
+    *,
+    partial: bool = False,
+    missing_domains: list[str] | None = None,
+    scope_supported: bool = True,
+) -> list[LLMMessage]:
     """Build the generation request within the shared LLM size contract."""
 
     combined = f"USER QUESTION\n{question}\n\nAUTHORIZED PROJECT CONTEXT\n{context}\n\nRETRIEVED REGULATORY EVIDENCE\n{evidence}"
     partial_instruction = ""
     if partial:
-        partial_instruction = "\nCoverage is partial. Answer only the points supported by retrieved evidence. Explicitly state that these areas still need verification: " + ", ".join(missing_domains or []) + ". Never fill these gaps from model knowledge."
+        gap = (
+            "the precise application of these obligations to the authorized project, sector, or classification"
+            if not scope_supported
+            else ", ".join(missing_domains or [])
+        )
+        partial_instruction = "\nCoverage is partial. Answer only the points supported by retrieved evidence. Explicitly state that this still needs verification: " + gap + ". Never fill these gaps from model knowledge."
     if len(combined) <= LLM_MESSAGE_MAX_CHARS:
         return [
             LLMMessage(role="system", content=SYSTEM_INSTRUCTIONS + partial_instruction),
@@ -508,6 +610,10 @@ def _assessment_payload(assessment) -> dict[str, str | int | float | bool | None
         "useful_evidence_count": assessment.useful_evidence_count,
         "total_evidence_count": assessment.total_evidence_count,
         "domain_reasons": " | ".join(f"{domain}: {reason}" for domain, reason in assessment.domain_reasons.items())[:1800],
+        "question_scope": assessment.question_scope.value,
+        "scope_signals": ", ".join(assessment.scope_matched_signals),
+        "scope_supported": assessment.scope_supported,
+        "scope_support_reason": " | ".join(assessment.scope_support_reasons)[:1000],
         **_resolution_payload(assessment),
     }
 
@@ -519,6 +625,9 @@ def _initial_assessment_payload(assessment, *, initial_evidence_count: int) -> d
         "initial_covered_domains": ", ".join(assessment.covered_domains),
         "initial_missing_domains": ", ".join(assessment.missing_domains),
         "initial_evidence_count": initial_evidence_count,
+        "initial_question_scope": assessment.question_scope.value,
+        "initial_scope_supported": assessment.scope_supported,
+        "initial_scope_support_reason": " | ".join(assessment.scope_support_reasons)[:1000],
     }
 
 
@@ -546,20 +655,59 @@ def _fallback_payload(
         "initial_evidence_status": initial_assessment.status.value,
         "initial_covered_domains": ", ".join(initial_assessment.covered_domains),
         "initial_missing_domains": ", ".join(initial_assessment.missing_domains),
+        "initial_question_scope": initial_assessment.question_scope.value,
+        "initial_scope_supported": initial_assessment.scope_supported,
+        "initial_scope_support_reason": " | ".join(initial_assessment.scope_support_reasons)[:1000],
         "final_evidence_count": final_evidence_count,
         "final_evidence_status": final_assessment.status.value,
         "final_covered_domains": ", ".join(final_assessment.covered_domains),
         "final_missing_domains": ", ".join(final_assessment.missing_domains),
+        "final_question_scope": final_assessment.question_scope.value,
+        "final_scope_supported": final_assessment.scope_supported,
+        "final_scope_support_reason": " | ".join(final_assessment.scope_support_reasons)[:1000],
+    }
+
+
+def _authoritative_fallback_payload(
+    *,
+    attempted: bool,
+    domains: list[str],
+    attempted_sources: list[str],
+    succeeded_sources: list[str],
+    failed_sources: list[str],
+    external_evidence_count: int,
+    external_unique_evidence_count: int,
+    final_evidence_count: int,
+    before_assessment,
+    after_assessment,
+) -> dict[str, str | int | float | bool | None]:
+    """Scalar-only observability projection; URLs, queries and page bodies stay out."""
+    return {
+        "authoritative_fallback_attempted": attempted,
+        "authoritative_fallback_domains": ", ".join(domains),
+        "authoritative_sources_attempted": ", ".join(attempted_sources),
+        "authoritative_sources_succeeded": ", ".join(succeeded_sources),
+        "authoritative_sources_failed": ", ".join(failed_sources),
+        "authoritative_failure_count": len(failed_sources),
+        "authoritative_external_evidence_count": external_evidence_count,
+        "authoritative_external_unique_evidence_count": external_unique_evidence_count,
+        "authoritative_final_evidence_count": final_evidence_count,
+        "authoritative_status_before": before_assessment.status.value,
+        "authoritative_status_after": after_assessment.status.value,
+        "authoritative_scope_supported_before": before_assessment.scope_supported,
+        "authoritative_scope_supported_after": after_assessment.scope_supported,
+        "authoritative_covered_domains_after": ", ".join(after_assessment.covered_domains),
     }
 
 
 def _merge_evidence(initial: list[RegulatoryEvidence], fallback: list[RegulatoryEvidence]) -> list[RegulatoryEvidence]:
-    """Preserve initial rank/order and merge fallback results by stable point id."""
+    """Preserve order and deduplicate only within the same evidence provenance."""
     merged: list[RegulatoryEvidence] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for item in [*initial, *fallback]:
-        if item.point_id not in seen:
-            seen.add(item.point_id)
+        identity = (item.provenance_type, item.point_id)
+        if identity not in seen:
+            seen.add(identity)
             merged.append(item)
     return merged
 

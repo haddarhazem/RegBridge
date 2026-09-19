@@ -21,6 +21,7 @@ def build_regulatory_orchestrator(session: AsyncSession) -> Orchestrator:
             RegulatoryAgent(
                 retriever=get_regulatory_retriever(),
                 provider=get_llm_provider(),
+                authoritative_fallback_enabled=get_settings().authoritative_source_fallback_enabled,
                 generation_max_tokens=get_settings().regulatory_generation_max_tokens,
                 verification_max_tokens=get_settings().regulatory_verification_max_tokens,
             )

@@ -53,10 +53,16 @@ test('copilot maps the real fallback stages without exposing domain query text',
   const source = fs.readFileSync('frontend/entrepreneur/app.js', 'utf8');
   assert.match(source, /RETRIEVING_MISSING_DOMAIN_EVIDENCE/);
   assert.match(source, /REASSESSING_EVIDENCE/);
+  assert.match(source, /RETRIEVING_AUTHORITATIVE_EVIDENCE/);
+  assert.match(source, /REASSESSING_AUTHORITATIVE_EVIDENCE/);
   assert.match(source, /Recherche complémentaire des sources/);
+  assert.match(source, /Recherche des sources officielles/);
   assert.match(source, /Réévaluation des sources/);
   assert.match(source, /item\.status !== 'not_started'/);
   assert.doesNotMatch(source, /fallback_query|domain_query/i);
+  assert.doesNotMatch(source, /authoritative_url|authoritative_query|page_body/i);
+  assert.match(source, /Question scope/);
+  assert.match(source, /Scope supported/);
 });
 
 test('project and populated roadmap render production response shapes', () => {

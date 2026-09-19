@@ -136,6 +136,26 @@ async def test_status_endpoint_authorizes_conversation_and_active_membership(pip
             "evidence_status": "SUFFICIENT", "final_evidence_status": "SUFFICIENT",
             "final_covered_domains": "PRIVACY, AI", "final_missing_domains": "",
         })
+        await recorder.start(PipelineStage.RETRIEVING_AUTHORITATIVE_EVIDENCE)
+        await recorder.succeed(PipelineStage.RETRIEVING_AUTHORITATIVE_EVIDENCE, {
+            "authoritative_fallback_attempted": True,
+            "authoritative_fallback_domains": "AI",
+            "authoritative_sources_attempted": "eur_lex, european_commission_digital",
+            "authoritative_sources_succeeded": "eur_lex",
+            "authoritative_sources_failed": "european_commission_digital",
+            "authoritative_failure_count": 1,
+            "authoritative_external_evidence_count": 1,
+            "authoritative_status_before": "PARTIAL",
+            "authoritative_status_after": "SUFFICIENT",
+        })
+        await recorder.start(PipelineStage.REASSESSING_AUTHORITATIVE_EVIDENCE)
+        await recorder.succeed(PipelineStage.REASSESSING_AUTHORITATIVE_EVIDENCE, {
+            "evidence_status": "SUFFICIENT", "final_evidence_status": "SUFFICIENT",
+            "final_covered_domains": "PRIVACY, AI", "final_missing_domains": "",
+            "final_scope_supported": True,
+            "authoritative_status_before": "PARTIAL",
+            "authoritative_status_after": "SUFFICIENT",
+        })
         await recorder.start(PipelineStage.VERIFYING)
         await recorder.fail(PipelineStage.VERIFYING, error_code="VERIFICATION_FAILED", error_message="safe verification failure", result={
             "verification_verdict": "block", "verification_reason": "bounded safe reason",
@@ -148,6 +168,11 @@ async def test_status_endpoint_authorizes_conversation_and_active_membership(pip
         assert recovered.diagnostics is not None
         assert recovered.diagnostics.fallback_attempted is True
         assert recovered.diagnostics.fallback_domains == ["AI"]
+        assert recovered.diagnostics.authoritative_fallback_attempted is True
+        assert recovered.diagnostics.authoritative_sources_attempted == ["eur_lex", "european_commission_digital"]
+        assert recovered.diagnostics.authoritative_sources_succeeded == ["eur_lex"]
+        assert recovered.diagnostics.authoritative_sources_failed == ["european_commission_digital"]
+        assert recovered.diagnostics.authoritative_status_after.value == "SUFFICIENT"
         assert recovered.diagnostics.final_covered_domains == ["PRIVACY", "AI"]
         assert recovered.diagnostics.verification_reason == "bounded safe reason"
         assert recovered.diagnostics.semantic_claim_count == 0

@@ -99,20 +99,43 @@ class CopilotDiagnosticsResponse(BaseModel):
     resolution_source: str | None = Field(default=None, max_length=80)
     matched_signals: list[str] = Field(default_factory=list, max_length=12)
     needs_clarification: bool = False
+    question_scope: str | None = Field(default=None, max_length=40)
+    scope_signals: list[str] = Field(default_factory=list, max_length=12)
+    scope_supported: bool | None = None
+    scope_support_reason: str | None = Field(default=None, max_length=1000)
     initial_evidence_count: int | None = Field(default=None, ge=0, le=5)
     initial_evidence_status: EvidenceStatus | None = None
     initial_covered_domains: list[str] = Field(default_factory=list, max_length=6)
     initial_missing_domains: list[str] = Field(default_factory=list, max_length=6)
+    initial_question_scope: str | None = Field(default=None, max_length=40)
+    initial_scope_supported: bool | None = None
+    initial_scope_support_reason: str | None = Field(default=None, max_length=1000)
     fallback_attempted: bool = False
     fallback_domains: list[str] = Field(default_factory=list, max_length=6)
     fallback_evidence_count: int | None = Field(default=None, ge=0, le=30)
     fallback_unique_evidence_count: int | None = Field(default=None, ge=0, le=30)
     fallback_failed_domains: list[str] = Field(default_factory=list, max_length=6)
     fallback_failure_count: int | None = Field(default=None, ge=0, le=6)
+    authoritative_fallback_attempted: bool = False
+    authoritative_fallback_domains: list[str] = Field(default_factory=list, max_length=6)
+    authoritative_sources_attempted: list[str] = Field(default_factory=list, max_length=2)
+    authoritative_sources_succeeded: list[str] = Field(default_factory=list, max_length=2)
+    authoritative_sources_failed: list[str] = Field(default_factory=list, max_length=2)
+    authoritative_failure_count: int | None = Field(default=None, ge=0, le=2)
+    authoritative_external_evidence_count: int | None = Field(default=None, ge=0, le=4)
+    authoritative_external_unique_evidence_count: int | None = Field(default=None, ge=0, le=4)
+    authoritative_final_evidence_count: int | None = Field(default=None, ge=0, le=35)
+    authoritative_status_before: EvidenceStatus | None = None
+    authoritative_status_after: EvidenceStatus | None = None
+    authoritative_scope_supported_before: bool | None = None
+    authoritative_scope_supported_after: bool | None = None
     final_evidence_count: int | None = Field(default=None, ge=0, le=35)
     final_evidence_status: EvidenceStatus | None = None
     final_covered_domains: list[str] = Field(default_factory=list, max_length=6)
     final_missing_domains: list[str] = Field(default_factory=list, max_length=6)
+    final_question_scope: str | None = Field(default=None, max_length=40)
+    final_scope_supported: bool | None = None
+    final_scope_support_reason: str | None = Field(default=None, max_length=1000)
 
 
 class CopilotRequestStatusResponse(BaseModel):
@@ -127,7 +150,7 @@ class CopilotRequestStatusResponse(BaseModel):
     completed_at: datetime | None = None
     failure_stage: PipelineStage | None = None
     failure_code: str | None = Field(default=None, max_length=80)
-    stages: list[CopilotStageResponse] = Field(default_factory=list, max_length=9)
+    stages: list[CopilotStageResponse] = Field(default_factory=list, max_length=11)
     diagnostics: CopilotDiagnosticsResponse | None = None
 
 

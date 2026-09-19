@@ -23,6 +23,16 @@ then, only if the initial coverage is partial or insufficient,
 `CANCELLED`. The browser polls approximately every 900 ms and stops on a
 terminal status. It does not use timers to fabricate progress.
 
+When `AUTHORITATIVE_SOURCE_FALLBACK_ENABLED=true`, a request that remains
+`PARTIAL` or `INSUFFICIENT` after the targeted Qdrant fallback may additionally
+enter `RETRIEVING_AUTHORITATIVE_EVIDENCE` and
+`REASSESSING_AUTHORITATIVE_EVIDENCE`. This is a bounded, read-only lookup in a
+fixed registry of official sources (CNIL, EUR-Lex, European Commission, ANSSI,
+Service-Public/Entreprendre, ADEME and the French ecology ministry). It is not
+generic web search. The feature is opt-in because it can send the bounded
+regulatory query to those public authorities; the provider/model and Qdrant
+configuration are unchanged.
+
 `RequiredDomainResolver` first records a safe, typed domain decision:
 `QUESTION_EXPLICIT`, `PROJECT_CONTEXT_BROAD_QUESTION`, or `UNRESOLVED`.
 Explicit question signals take priority; only a broad regulatory project
@@ -62,11 +72,21 @@ Partial supplementary failures retain successfully retrieved evidence and list
 only the affected domain names. Queries, project text, chunks, credentials,
 headers and raw provider payloads are not persisted.
 
+The authoritative-source branch persists the same limited class of
+observability data: requested domains, registry source IDs, success/failure
+counts and before/after deterministic assessment status. It never persists an
+external page body, URL, query, redirect target, HTTP header or credential.
+Each source has a HTTPS host allowlist; URL credentials, local/private IPs,
+unapproved hosts and unsafe redirects are rejected before fetching. At most two
+sources, two pages per source, four excerpts total and 1,200 characters per
+excerpt can enter the evidence path. The existing evaluator and semantic
+verifier receive the normalized excerpts; visiting an official source never
+forces `SUFFICIENT`.
+
 Developer diagnostics are exposed only in development (or when
 `COPILOT_DIAGNOSTICS_ENABLED=true`) and show the request ID, stage summary,
 initial/final coverage, fallback domain names and counts, provider/model,
 verification result and safe error code. They never include prompts, queries,
 chunks, private project content, JWTs, API keys or provider response bodies.
 
-LangGraph was not introduced. External regulatory fallback/web retrieval is not
-implemented here.
+LangGraph was not introduced. Generic web search and crawling are not used.

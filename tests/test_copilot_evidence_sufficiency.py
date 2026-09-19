@@ -10,6 +10,8 @@ from app.modules.regulatory.contracts import RegulatoryEvidence
 from app.modules.regulatory.evidence_sufficiency import (
     EvidenceSufficiencyEvaluator,
     MissingDomainQueryBuilder,
+    QuestionScope,
+    QuestionScopeResolver,
     RequiredDomainResolver,
     ResolutionSource,
 )
@@ -77,6 +79,114 @@ def test_evidence_sufficiency_requires_resolved_domains_and_substantive_evidence
     assert resolver.resolve("What is RGBD?", broad_context).needs_clarification
 
 
+def test_question_scope_resolver_uses_deterministic_specificity_precedence():
+    resolver = QuestionScopeResolver()
+
+    assert resolver.resolve("What is RGPD?").scope == QuestionScope.GENERAL_INFORMATION
+    assert resolver.resolve("Quelles obligations generales dois-je respecter ?").scope == QuestionScope.GENERAL_OBLIGATIONS
+    assert resolver.resolve("Quelles obligations s appliquent a mon SaaS cloud ?").scope == QuestionScope.PROJECT_SPECIFIC
+    assert resolver.resolve("Quelles obligations sont specifiques au secteur des compteurs IoT ?").scope == QuestionScope.SECTOR_SPECIFIC
+    assert resolver.resolve("Quelle classification et quel niveau de risque pour mon systeme IA ?").scope == QuestionScope.CLASSIFICATION_SPECIFIC
+
+
+def test_scope_specificity_prevents_topical_evidence_from_being_a_false_positive():
+    resolver = RequiredDomainResolver()
+    scopes = QuestionScopeResolver()
+    evaluator = EvidenceSufficiencyEvaluator()
+    project = context(
+        country_code="FR",
+        technology="plateforme SaaS cloud et compteurs IoT energetiques",
+        sector="gestion de l energie",
+    )
+
+    definition_question = "What is RGPD?"
+    definition = item("Le RGPD est le cadre europeen pour la protection des donnees personnelles.")
+    definition_assessment = evaluator.evaluate(
+        resolver.resolve(definition_question, project), [definition], scopes.resolve(definition_question), project,
+    )
+    assert definition_assessment.status == EvidenceStatus.SUFFICIENT
+    assert definition_assessment.scope_supported is True
+
+    obligations_question = "Quelles obligations RGPD dois-je respecter ?"
+    generic_privacy = item("Le RGPD assure la protection des donnees personnelles des personnes concernees.")
+    obligations_assessment = evaluator.evaluate(
+        resolver.resolve(obligations_question, project), [generic_privacy], scopes.resolve(obligations_question), project,
+    )
+    assert obligations_assessment.status == EvidenceStatus.PARTIAL
+    assert obligations_assessment.scope_supported is False
+
+    cloud_question = "Quelles obligations de securite cloud s appliquent a mon SaaS ?"
+    generic_cloud = item("Les obligations de securite cloud sont applicables aux entreprises utilisant des services numeriques.", organization="ANSSI")
+    cloud_assessment = evaluator.evaluate(
+        resolver.resolve(cloud_question, project), [generic_cloud], scopes.resolve(cloud_question), project,
+    )
+    assert cloud_assessment.status == EvidenceStatus.PARTIAL
+    assert cloud_assessment.covered_domains == ["SECURITY_CLOUD"]
+    assert cloud_assessment.scope_supported is False
+
+    sector_question = "Quelles obligations sont specifiques au secteur des compteurs IoT energetiques ?"
+    generic_iot = item("Les obligations applicables aux compteurs IoT energetiques concernent les entreprises qui les exploitent.", organization="CRE")
+    sector_assessment = evaluator.evaluate(
+        resolver.resolve(sector_question, project), [generic_iot], scopes.resolve(sector_question), project,
+    )
+    assert sector_assessment.status == EvidenceStatus.PARTIAL
+    assert sector_assessment.covered_domains == ["ENERGY_IOT"]
+    assert sector_assessment.scope_supported is False
+
+    classification_question = "Quelle classification de risque pour mon systeme IA au titre de l AI Act ?"
+    generic_ai = item("L AI Act contient des obligations generales et des categories de risque pour les systemes d intelligence artificielle.", organization="Commission europeenne")
+    classification_assessment = evaluator.evaluate(
+        resolver.resolve(classification_question, project), [generic_ai], scopes.resolve(classification_question), project,
+    )
+    assert classification_assessment.status == EvidenceStatus.PARTIAL
+    assert classification_assessment.covered_domains == ["AI"]
+    assert classification_assessment.scope_supported is False
+
+    missing_ai = evaluator.evaluate(
+        resolver.resolve(classification_question, project), [general_evidence()], scopes.resolve(classification_question), project,
+    )
+    assert missing_ai.status == EvidenceStatus.INSUFFICIENT
+
+
+def test_specificity_rules_accept_evidence_only_when_it_binds_conditions_to_confirmed_context():
+    resolver = RequiredDomainResolver()
+    scopes = QuestionScopeResolver()
+    evaluator = EvidenceSufficiencyEvaluator()
+
+    ai_question = "Quelle classification de risque pour mon systeme IA au titre de l AI Act ?"
+    ai_context = context(technology="algorithme d intelligence artificielle pour analyser la consommation")
+    ai_evidence = item(
+        "Un systeme d intelligence artificielle utilisant un algorithme doit etre classe selon sa finalite "
+        "lorsque son deploiement releve des criteres de risque de l AI Act.",
+        organization="Commission europeenne",
+    )
+    assert evaluator.evaluate(
+        resolver.resolve(ai_question, ai_context), [ai_evidence], scopes.resolve(ai_question), ai_context,
+    ).status == EvidenceStatus.SUFFICIENT
+
+    iot_question = "Quelles obligations sont specifiques au secteur des compteurs IoT energetiques ?"
+    iot_context = context(technology="compteurs IoT energetiques")
+    iot_evidence = item(
+        "L exploitant d un compteur IoT energetique doit respecter ces obligations lorsque le dispositif est deploye.",
+        organization="CRE",
+    )
+    assert evaluator.evaluate(
+        resolver.resolve(iot_question, iot_context), [iot_evidence], scopes.resolve(iot_question), iot_context,
+    ).status == EvidenceStatus.SUFFICIENT
+
+
+def test_scope_aware_fallback_query_adds_only_canonical_scope_terms():
+    built = MissingDomainQueryBuilder().build(
+        "Quelle classification de risque pour mon systeme IA au titre de l AI Act ?",
+        "AI",
+        context(technology="systeme IA"),
+        QuestionScopeResolver().resolve("Quelle classification de risque pour mon systeme IA au titre de l AI Act ?"),
+    )
+    assert "classification niveau risque" in built
+    assert "criteres applicabilite" in built
+    assert len(built) <= 500
+
+
 class Recorder:
     def __init__(self): self.events = []
     async def start(self, stage, **kwargs): self.events.append(("start", stage, kwargs))
@@ -138,7 +248,7 @@ def request(question: str) -> AgentRequest:
 def broad_request() -> AgentRequest:
     return AgentRequest(
         request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), capability="regulatory", locale="fr",
-        question="Quelles sont les principales obligations réglementaires pour mon projet en France ?",
+        question="Quelles sont les principales obligations reglementaires pour une entreprise en France ?",
         authorized_context=context(
             country_code="FR", data_context="Données personnelles de clients",
             technology="AI/ML",
@@ -168,6 +278,32 @@ def test_missing_domain_query_builder_is_deterministic_bounded_and_excludes_proj
     )
     assert "cybersecurite" in built and "securite cloud" in built and "saas" in built
     assert "PRIVATE" not in built and len(built) <= 500
+
+
+@pytest.mark.asyncio
+async def test_scope_gap_triggers_bounded_fallback_even_when_the_domain_is_covered():
+    question = "Quelles obligations sont specifiques au secteur des compteurs IoT energetiques ?"
+    initial = item(
+        "Les obligations applicables aux compteurs IoT energetiques concernent les entreprises qui les exploitent.",
+        organization="CRE",
+    )
+    retriever = PlannedRetriever([initial], [initial])
+    result = await RegulatoryAgent(retriever=retriever, provider=Provider(), verifier=Verifier()).run(
+        AgentRequest(
+            request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question=question,
+            capability="regulatory", locale="fr",
+            authorized_context=context(country_code="FR", sector="gestion de l energie", technology="compteurs IoT energetiques"),
+        ),
+        pipeline=Recorder(),
+    )
+
+    assert len(retriever.queries) == 2
+    assert "obligations sectorielles" in retriever.queries[1]
+    assert result.structured_payload["fallback_attempted"] is True
+    assert result.structured_payload["fallback_domains"] == "ENERGY_IOT"
+    assert result.structured_payload["initial_scope_supported"] is False
+    assert result.structured_payload["final_scope_supported"] is False
+    assert result.structured_payload["evidence_status"] == "PARTIAL"
 
 
 @pytest.mark.asyncio
