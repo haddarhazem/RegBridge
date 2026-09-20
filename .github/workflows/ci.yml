@@ -16,6 +16,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://regbridge_ci:regbridge_ci@localhost:5432/regbridge_ci
       ENVIRONMENT: test
+      COPILOT_DIAGNOSTICS_ENABLED: "true"
       APP_NAME: RegBridge CI
       OIDC_ISSUER: https://issuer.example.test/
       OIDC_AUDIENCE: https://api.example.test/
