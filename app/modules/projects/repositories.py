@@ -10,7 +10,15 @@ from sqlalchemy.orm import selectinload
 
 from app.modules.ai.context import ProjectContextProjection, ProjectFactProjection
 from app.modules.ai.projections import AssessmentConclusionProjection, AssessmentProjection, RoadmapItemProjection, RoadmapProjection
+from app.modules.documents.models import Document
+from app.modules.projects.knowledge_graph import (
+    GraphDocumentProjection,
+    GraphFactProjection,
+    GraphRegulatoryAssessmentProjection,
+    ProjectKnowledgeGraphProjection,
+)
 from app.modules.projects.models import Project, ProjectFact, ProjectMember
+from app.modules.projects.profile_models import StartupProfile, StartupProfileField
 
 
 class ProjectContextRepository:
@@ -74,6 +82,98 @@ class ProjectContextRepository:
             target_market=confirmed_value("market", values.target_market),
             location=confirmed_value("location", values.location),
             facts=tuple(ProjectFactProjection(domain=row.domain, value=row.value, origin=row.origin, status=row.status, provenance=row.provenance, uncertainty=row.uncertainty) for row in fact_rows),
+        )
+
+    async def load_knowledge_graph_projection(self, project_id: uuid.UUID) -> ProjectKnowledgeGraphProjection | None:
+        """Load only metadata already authorized by the caller for the graph read model."""
+        project = await self.session.scalar(select(Project).where(Project.id == project_id))
+        if project is None:
+            return None
+        facts = list((await self.session.scalars(
+            select(ProjectFact)
+            .where(ProjectFact.project_id == project_id, ProjectFact.status.in_(["confirmed", "corrected"]))
+            .order_by(ProjectFact.created_at, ProjectFact.id)
+        )).all())
+        documents = list((await self.session.scalars(
+            select(Document)
+            .where(Document.project_id == project_id, Document.deleted_at.is_(None))
+            .order_by(Document.created_at, Document.id)
+            .limit(20)
+        )).all())
+        # Only an assessment that the existing verifier accepted can enrich the
+        # graph.  Its sources remain provenance, not legal conclusions.
+        from app.modules.regulatory.assessment_models import RegulatoryAssessment
+        assessment = await self.session.scalar(
+            select(RegulatoryAssessment)
+            .where(
+                RegulatoryAssessment.project_id == project_id,
+                RegulatoryAssessment.status == "completed",
+                RegulatoryAssessment.verification_verdict.in_(("pass", "pass_with_warnings")),
+            )
+            .order_by(RegulatoryAssessment.version.desc())
+            .limit(1)
+        )
+        regulatory_assessment = None
+        if assessment is not None:
+            result = assessment.result or {}
+            raw_domains = result.get("regulatory_domains") or result.get("domains") or []
+            domains = tuple(
+                value.strip() for value in raw_domains[:12]
+                if isinstance(value, str) and value.strip() and len(value.strip()) <= 120
+            ) if isinstance(raw_domains, list) else ()
+            organizations = tuple(dict.fromkeys(
+                str(item.get("organization")).strip()
+                for item in (assessment.source_provenance or [])[:20]
+                if isinstance(item, dict) and isinstance(item.get("organization"), str) and item["organization"].strip()
+            ))
+            regulatory_assessment = GraphRegulatoryAssessmentProjection(
+                id=assessment.id,
+                version=assessment.version,
+                verification_verdict=assessment.verification_verdict,
+                domains=domains,
+                evidence_organizations=organizations,
+            )
+        confirmed = {field for field, value in (project.confirmed_fields or {}).items() if value == "confirmed"}
+        # ``business_model`` is a structured startup-profile field.  This
+        # projection is only reached after active project-member authorization,
+        # matching the internal profile read boundary.
+        business_model = await self.session.scalar(
+            select(StartupProfileField.value)
+            .join(StartupProfile, StartupProfile.id == StartupProfileField.profile_id)
+            .where(
+                StartupProfile.project_id == project_id,
+                StartupProfileField.field_name == "business_model",
+            )
+        )
+        return ProjectKnowledgeGraphProjection(
+            project_id=project.id,
+            display_name=project.display_name,
+            project_type=project.project_type,
+            country_code=project.country_code,
+            activity=project.activity,
+            sector=project.sector,
+            technology=project.technology,
+            data_context=project.data_context,
+            target_market=project.target_market,
+            location=project.location,
+            confirmed_fields=frozenset(confirmed),
+            business_model=business_model if isinstance(business_model, str) else None,
+            facts=tuple(GraphFactProjection(
+                domain=fact.domain,
+                value=fact.value,
+                status=fact.status,
+                origin=fact.origin,
+                id=fact.id,
+                provenance={key: value for key, value in (fact.provenance or {}).items() if isinstance(value, str) and key in {"source_field", "source_locator", "rule", "extraction_method"}},
+            ) for fact in facts),
+            documents=tuple(GraphDocumentProjection(
+                id=document.id,
+                title=document.title,
+                document_type=document.document_type,
+                classification=document.classification,
+                visibility=document.visibility,
+            ) for document in documents),
+            regulatory_assessment=regulatory_assessment,
         )
 
     async def load_latest_assessment_projection(self, project_id: uuid.UUID) -> AssessmentProjection | None:

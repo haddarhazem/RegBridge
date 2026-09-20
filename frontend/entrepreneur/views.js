@@ -8,7 +8,7 @@
   };
   const lifecycle = { idea: 'Projet idée', startup_in_creation: 'Startup en création', existing_startup: 'Startup existante' };
   const statuses = { pending: 'À faire', in_progress: 'En cours', completed: 'Terminé', skipped: 'Ignoré' };
-  const factDomains = { activity: 'Activité', sector: 'Secteur', technology: 'Technologie', data: 'Données', market: 'Marché', location: 'Localisation' };
+  const factDomains = { activity: 'Activité', sector: 'Secteur', technology: 'Technologie', data: 'Données', market: 'Marché', location: 'Localisation', provider: 'Fournisseur / infrastructure' };
 
   const extractionStatuses = { uploaded: 'En préparation', queued: 'En préparation', pending: 'En préparation', processing: 'En préparation', ready: 'Prêt', failed: 'Échec', quarantined: 'Échec' };
 
@@ -47,7 +47,7 @@
     return { complete, total: roadmap.items.length, percent: Math.round((complete / roadmap.items.length) * 100) };
   }
 
-  function dashboard({ project, onboarding, facts = [], assessment, roadmap }) {
+  function dashboard({ project, onboarding, facts = [], graph, assessment, roadmap }) {
     if (!project) {
       return `${pageHeader('ESPACE ENTREPRENEUR', 'Transformez votre idée en parcours concret.', 'Créez votre premier projet pour identifier les informations utiles, préparer vos démarches et suivre votre lancement.')}
         <section class="surface dashboard-onboarding"><div><p class="eyebrow">VOTRE PREMIER PROJET</p><h2>Commencez avec une description simple.</h2><p>RegBridge vous accompagne ensuite pour préciser votre situation, vérifier les informations clés et construire votre roadmap.</p>${button('Créer mon premier projet', 'create-project')}</div><ol class="journey-rail"><li><b>01</b><span>Décrivez votre activité</span></li><li><b>02</b><span>Vérifiez les informations clés</span></li><li><b>03</b><span>Construisez votre roadmap</span></li></ol></section>`;
@@ -62,12 +62,15 @@
     const projectAction = project.project_type === 'idea' && onboarding?.status !== 'complete'
       ? button('Continuer mon projet', 'open-onboarding')
       : button('Voir mon projet', 'open-project');
-    return `${pageHeader(lifecycle[project.project_type] || project.project_type, project.display_name || 'Projet sans nom', project.raw_description || 'Description non renseignée.', `${projectAction}${button('Voir la roadmap', 'open-roadmap', 'secondary')}`)}
+    const summary = [project.sector, project.target_market, project.technology].filter(Boolean).slice(0, 2).join(' · ') || 'Informations structurées à confirmer';
+    const graphPreview = `<button class="surface graph-preview" data-action="open-graph"><span>GRAPHE DU PROJET</span><strong>${graph?.metadata?.node_count ?? '—'} connaissances reliées</strong><p>${escape(summary)}</p><small>Explorer les relations et leurs sources →</small></button>`;
+    return `${pageHeader(lifecycle[project.project_type] || project.project_type, project.display_name || 'Projet sans nom', summary, `${projectAction}${button('Voir la roadmap', 'open-roadmap', 'secondary')}`)}
       <section class="dashboard-grid">
         <article class="surface launch-progress"><div class="card-kicker"><span>PROGRESSION DU LANCEMENT</span></div>${stats.total ? `<strong>${stats.complete} / ${stats.total} étapes terminées</strong><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${stats.total}" aria-valuenow="${stats.complete}"><span style="width:${stats.percent}%"></span></div><small>${next ? `Prochaine : ${escape(next.title)}` : 'Aucune prochaine étape active'}</small>` : `<strong>Roadmap non générée</strong><p>Confirmez les informations du projet pour préparer votre checklist de lancement.</p>`}</article>
         ${nextAction}
       </section>
       <section class="secondary-grid" aria-label="État du projet">
+        ${graphPreview}
         <button class="surface summary-card" data-action="open-facts"><span>PROJET</span><strong>Faits du projet</strong><p>${confirmedFacts} confirmé${confirmedFacts > 1 ? 's' : ''} · ${pendingFacts} en attente</p></button>
         <button class="surface summary-card" data-action="open-regulatory"><span>RÉGLEMENTATION</span><strong>Évaluation réglementaire</strong><p>${assessment ? `Version ${assessment.version} · ${escape(assessment.status)}` : 'Aucune évaluation'}</p></button>
         <button class="surface summary-card" data-action="open-documents"><span>DOCUMENTS</span><strong>Documents du projet</strong><p>Ouvrir le registre autorisé</p></button>
@@ -122,10 +125,11 @@
     ];
     const inferred = active.filter((fact) => fact.origin === 'inferred');
     const canInfer = project.project_type === 'idea';
+    const canEnrich = Boolean(project.technology || project.data);
     if (!declared.length && !inferred.length) return emptyState(
       'Aucune information à vérifier',
       canInfer ? 'Demandez à RegBridge d’identifier les informations utiles à partir de vos réponses.' : 'Aucune information déduite n’est disponible pour cette étape du projet.',
-      canInfer ? button('Identifier les informations', 'infer-facts') : '',
+      `${canInfer ? button('Identifier les informations', 'infer-facts') : ''}${canEnrich ? button('Identifier les concepts', 'enrich-knowledge', 'secondary') : ''}`,
     );
     const cards = (items, inferredGroup) => items.length ? `<div class="fact-list">${items.map((fact) => {
       const editing = inferredGroup && editingFactId === fact.id;
@@ -133,18 +137,25 @@
       const actions = inferredGroup && fact.status === 'pending_confirmation' && !editing ? `<div class="card-actions">${button('Confirmer', 'confirm-fact', 'primary', `data-fact-id="${escape(fact.id)}"`)}${button('Corriger', 'correct-fact', 'secondary', `data-fact-id="${escape(fact.id)}"`)}${button('Rejeter', 'reject-fact', 'text', `data-fact-id="${escape(fact.id)}"`)}</div>` : '';
       return `<article class="surface fact-card"><div class="card-kicker"><span>${escape(factDomains[fact.domain] || fact.domain)}</span>${badge(fact.status === 'pending_confirmation' ? 'À confirmer' : fact.status, fact.status)}</div><h3>${escape(fact.value)}</h3><dl><div><dt>Source</dt><dd>${escape(fact.provenance?.source_field || 'Information confirmée')}</dd></div>${fact.provenance?.excerpt ? `<div><dt>Extrait</dt><dd>“${escape(fact.provenance.excerpt)}”</dd></div>` : ''}${fact.uncertainty ? `<div><dt>Incertitude</dt><dd>${escape(fact.uncertainty)}</dd></div>` : ''}</dl>${editor}${actions}</article>`;
     }).join('')}</div>` : `<p class="quiet-empty">Aucun fait dans cette catégorie.</p>`;
-    return `<section class="section-block"><div class="section-heading"><h2>Déclaré par vous</h2></div>${cards(declared, false)}</section><section class="section-block"><div class="section-heading"><h2>Déduit à partir de vos réponses</h2>${canInfer ? button('Actualiser les informations', 'infer-facts', 'secondary') : ''}</div>${cards(inferred, true)}</section>`;
+    return `<section class="section-block"><div class="section-heading"><h2>Déclaré par vous</h2></div>${cards(declared, false)}</section><section class="section-block"><div class="section-heading"><h2>Informations à confirmer</h2>${canInfer ? button('Actualiser les informations', 'infer-facts', 'secondary') : ''}${canEnrich ? button('Identifier les concepts', 'enrich-knowledge', 'secondary') : ''}</div><p class="trace-copy">Les suggestions restent exclues du graphe et du Copilote jusqu'à votre confirmation.</p>${cards(inferred, true)}</section>`;
   }
 
-  function project({ project, facts, history, editingFactId, tab = 'overview' }) {
-    const tabs = `<nav class="tabs" aria-label="Sections du projet">${['overview', 'facts', 'history'].map((name) => `<button class="${tab === name ? 'active' : ''}" data-action="project-tab" data-tab="${name}">${{ overview: 'Vue d’ensemble', facts: 'Faits', history: 'Historique' }[name]}</button>`).join('')}</nav>`;
+  function project({ project, facts, graph, graphError, history, editingFactId, tab = 'overview' }) {
+    const tabs = `<nav class="tabs" aria-label="Sections du projet">${['overview', 'graph', 'facts', 'history'].map((name) => `<button class="${tab === name ? 'active' : ''}" data-action="project-tab" data-tab="${name}">${{ overview: 'Vue d’ensemble', graph: 'Graphe 3D', facts: 'Faits', history: 'Historique' }[name]}</button>`).join('')}</nav>`;
     let content;
     if (tab === 'facts') content = factsSection(facts, project, editingFactId);
+    else if (tab === 'graph') content = graphError === 'authorization'
+      ? emptyState('Accès au graphe indisponible', 'Ce graphe n’est plus accessible avec votre session actuelle.')
+      : graphError === 'technical'
+        ? emptyState('Impossible de charger le graphe', 'Réessayez dans quelques instants. Si le problème persiste, contactez le support.')
+        : graph?.nodes?.length
+          ? `<section class="knowledge-graph" data-project-graph></section>`
+          : emptyState('Graphe vide', 'Aucune connaissance structurée n’est encore disponible pour ce projet.');
     else if (tab === 'history') content = history?.length ? `<div class="timeline">${history.map((item) => `<article><time>${date(item.created_at)}</time><strong>${escape(lifecycle[item.from_type] || item.from_type)} → ${escape(lifecycle[item.to_type] || item.to_type)}</strong></article>`).join('')}</div>` : emptyState('Aucune transition', 'Le cycle de vie du projet n’a pas encore changé.');
-    else content = `<section class="detail-grid">${[['Activité', project.activity], ['Secteur', project.sector], ['Technologie', project.technology], ['Données', project.data], ['Marché', project.target_market], ['Localisation', project.location]].map(([term, value]) => `<article class="surface detail-card"><span>${escape(term)}</span><strong>${escape(value || 'Non renseigné')}</strong></article>`).join('')}</section><section class="surface lifecycle-card"><div><p class="eyebrow">CYCLE DE VIE</p><h2>${escape(lifecycle[project.project_type] || project.project_type)}</h2><p>Vous décidez quand votre projet est prêt à passer à l’étape suivante.</p></div>${project.project_type === 'idea' ? button('Passer en startup en création', 'transition-project', 'secondary') : ''}</section>`;
+    else content = `<section class="detail-grid">${[['Activité', project.activity], ['Secteur', project.sector], ['Technologie', project.technology], ['Données', project.data], ['Marché', project.target_market], ['Localisation', project.location]].map(([term, value]) => `<article class="surface detail-card"><span>${escape(term)}</span><strong>${escape(value || 'Non renseigné')}</strong></article>`).join('')}</section><section class="surface lifecycle-card"><div><p class="eyebrow">CYCLE DE VIE</p><h2>${escape(lifecycle[project.project_type] || project.project_type)}</h2><p>Vous décidez quand votre projet est prêt à passer à l’étape suivante.</p></div>${project.project_type === 'idea' ? button('Passer en startup en création', 'transition-project', 'secondary') : ''}</section>${project.raw_description ? `<details class="surface project-description"><summary>Description complète</summary><p>${escape(project.raw_description)}</p></details>` : ''}`;
     const header = tab === 'facts'
       ? pageHeader('VÉRIFICATION', 'Vérifiez ce que RegBridge a compris.', 'Avant toute analyse, confirmez ou corrigez les informations retenues à partir de vos réponses.')
-      : pageHeader(lifecycle[project.project_type] || project.project_type, project.display_name || 'Projet sans nom', project.raw_description || 'Description non renseignée.');
+      : pageHeader(lifecycle[project.project_type] || project.project_type, project.display_name || 'Projet sans nom', tab === 'graph' ? 'Explorez les informations confirmées, leurs liens et leur provenance.' : 'Consultez les informations structurées de votre projet. La description complète reste disponible dans les données du projet.');
     return `${header}${tabs}${content}`;
   }
 

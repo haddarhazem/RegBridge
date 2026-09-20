@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,8 +43,20 @@ class Project(Base):
 class ProjectFact(Base):
     __tablename__ = "project_facts"
     __table_args__ = (
-        UniqueConstraint("project_id", "domain", "value", "status", name="uq_project_facts_active_value"),
+        Index(
+            "uq_project_facts_active_value",
+            "project_id",
+            "domain",
+            "value",
+            "status",
+            unique=True,
+            postgresql_where=text("status <> 'deleted'"),
+        ),
         Index("ix_project_facts_project_status", "project_id", "status"),
+        CheckConstraint("origin IN ('inferred', 'user_declared')", name="ck_project_facts_origin"),
+        CheckConstraint("status IN ('pending_confirmation', 'confirmed', 'corrected', 'deleted')", name="ck_project_facts_status"),
+        CheckConstraint("uncertainty IN ('high', 'medium', 'low')", name="ck_project_facts_uncertainty"),
+        CheckConstraint("domain IN ('activity', 'sector', 'technology', 'data', 'market', 'location', 'provider')", name="ck_project_facts_domain"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))

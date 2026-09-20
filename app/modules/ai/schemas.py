@@ -70,6 +70,10 @@ class CopilotTurnResponse(BaseModel):
     sources: list[str] = Field(default_factory=list, max_length=50)
     references: list[str] = Field(default_factory=list, max_length=10)
     warnings: list[str] = Field(default_factory=list, max_length=10)
+    candidate_extraction_attempted: bool = False
+    candidate_count: int = Field(default=0, ge=0, le=8)
+    candidate_types: list[str] = Field(default_factory=list, max_length=4)
+    candidate_extraction_failed: bool = False
 
 
 class CopilotStageResponse(BaseModel):

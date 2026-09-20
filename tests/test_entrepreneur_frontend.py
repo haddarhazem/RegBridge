@@ -52,6 +52,45 @@ def test_entrepreneur_api_adapter_uses_only_real_backend_contracts() -> None:
     assert "console.log" not in adapter + app_script + views
 
 
+def test_project_knowledge_graph_is_a_real_authorized_frontend_view() -> None:
+    html = (ENTREPRENEUR / "index.html").read_text(encoding="utf-8")
+    adapter = (ENTREPRENEUR / "api.js").read_text(encoding="utf-8")
+    app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
+    views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
+    graph = (ENTREPRENEUR / "knowledge-graph.js").read_text(encoding="utf-8")
+
+    assert "/projects/${projectId}/knowledge-graph" in adapter
+    assert "api.knowledgeGraph(id)" in app_script
+    assert "data-project-graph" in app_script + views
+    assert "Graphe 3D" in views and "open-graph" in views
+    assert "raw_description" not in views[views.index("function dashboard"):views.index("function createProject")]
+    assert "project-graph-canvas" in graph
+    assert "pointermove" in graph and "wheel" in graph and "data-graph-filter" in graph
+    assert "knowledge-graph.js" in html
+    assert "graphError" in app_script
+    assert "Impossible de charger le graphe" in views
+    assert "Accès au graphe indisponible" in views
+    assert "Aucune connaissance structurée n’est encore disponible" in views
+
+
+def test_copilot_conversation_candidates_reuse_existing_fact_controls() -> None:
+    app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
+    views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
+    graph = (ENTREPRENEUR / "knowledge-graph.js").read_text(encoding="utf-8")
+
+    assert "knowledge_candidates" in app_script
+    assert "INFORMATIONS D" in app_script
+    assert "data-from-copilot" in app_script
+    assert "confirm-fact" in app_script and "correct-fact" in app_script and "reject-fact" in app_script
+    assert "provider: 'Fournisseur / infrastructure'" in views
+    assert "PROVIDER: 'Fournisseur'" in graph
+    assert "BUSINESS_MODEL: 'Modèle économique'" in graph
+    assert "RELATION_LABELS" in graph
+    assert "Utilise la technologie" in graph
+    assert "Cycle de vie" in graph
+    assert "STATUS_LABELS" in graph
+
+
 def test_projects_are_discovered_from_server_and_documents_fail_closed() -> None:
     store = (ENTREPRENEUR / "store.js").read_text(encoding="utf-8")
     views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
@@ -97,7 +136,9 @@ def test_views_cover_real_project_workflow_and_safety_copy() -> None:
     ):
         assert f"function {behavior}" in views
     assert "Déclaré par vous" in views
-    assert "Déduit à partir de vos réponses" in views
+    assert "Informations" in views
+    assert "enrichKnowledgeCandidates" in api
+    assert "enrich-knowledge" in views
     assert "Obligations identifiées" in views and "Actions recommandées" in views and "Points à vérifier / couverture manquante" in views
     assert "Ce score n’est pas une certification officielle" in views
     assert "ne remplace pas une validation juridique professionnelle" in views

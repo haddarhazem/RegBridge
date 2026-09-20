@@ -369,6 +369,36 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .workflow-notice { padding: 16px; margin-block: 16px; border: 1px solid var(--ash); }
 .evidence-finding > strong, .evidence-finding > small { display: block; margin-block: 6px; }
 .toast-error { position: fixed; z-index: 200; right: 22px; bottom: calc(var(--copilot-height) + 18px); max-width: 360px; padding: 13px 16px; border: 1px solid var(--carbon); border-radius: 8px; background: var(--paper); color: var(--carbon); box-shadow: 0 12px 30px rgba(5, 5, 5, .15); }
+.graph-preview { display: grid; gap: 8px; min-height: 150px; text-align: left; cursor: pointer; }
+.graph-preview > span, .graph-preview small { color: var(--smoke); font-size: .66rem; letter-spacing: .1em; }
+.graph-preview strong { font-size: 1.1rem; }
+.graph-preview p { margin: 0; color: var(--slate); }
+.knowledge-graph { min-height: 620px; padding: 18px; border: 1px solid var(--ash); border-radius: var(--app-radius); background: var(--paper); }
+
+.copilot-knowledge-candidates { margin-top: 14px; padding: 12px; border: 1px solid var(--ash); border-radius: 10px; background: var(--mist); color: var(--carbon); }
+.copilot-knowledge-candidates > p { margin: 0 0 8px; font-size: .68rem; font-weight: 700; letter-spacing: .08em; }
+.copilot-knowledge-candidate { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.copilot-knowledge-candidate strong, .copilot-knowledge-candidate span, .copilot-knowledge-candidate small { display: block; }
+.copilot-knowledge-candidate span, .copilot-knowledge-candidate small { margin-top: 2px; font-size: .78rem; color: var(--slate); }
+.copilot-candidate-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.copilot-candidate-actions button { padding: 6px 8px; border: 1px solid var(--graphite); border-radius: 5px; color: var(--carbon); background: var(--paper); font: inherit; font-size: .72rem; cursor: pointer; }
+.copilot-candidate-actions button:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
+.graph-toolbar { display: flex; justify-content: space-between; gap: 14px; align-items: center; color: var(--smoke); font-size: .72rem; }
+.graph-toolbar button, .graph-filter button, .graph-relations button { border: 1px solid var(--ash); background: var(--paper); color: var(--carbon); border-radius: 999px; cursor: pointer; }
+.graph-toolbar button { padding: 8px 11px; }
+.graph-filter { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0; }
+.graph-filter button { padding: 6px 10px; font-size: .68rem; }
+.graph-filter button[aria-pressed="false"] { opacity: .42; text-decoration: line-through; }
+.project-graph-canvas { display: block; width: 100%; height: 410px; border: 1px solid var(--ash); border-radius: 10px; touch-action: none; }
+.graph-details { min-height: 88px; margin-top: 14px; padding: 13px; border-left: 2px solid var(--carbon); background: var(--mist); font-size: .77rem; }
+.graph-details strong { display: block; margin-bottom: 8px; }
+.graph-details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.graph-details dt { color: var(--smoke); }.graph-details dd { margin: 0; }
+.graph-relations { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.graph-relations button { max-width: 100%; padding: 7px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .67rem; }
+.project-description { margin-top: 18px; padding: 16px; }
+.project-description summary { cursor: pointer; font-weight: 700; }
+.project-description p { max-width: 80ch; margin: 14px 0 0; line-height: 1.65; white-space: pre-wrap; }
 
 .workspace-skeleton { display: grid; gap: 16px; }
 .workspace-skeleton span { display: block; height: 150px; border-radius: var(--app-radius); background: linear-gradient(90deg, #e7e7e7, #fafafa, #e7e7e7); background-size: 200% 100%; animation: skeleton 1.2s linear infinite; }
@@ -415,6 +445,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .contract-picker { grid-template-columns: 1fr; }
   .profile-identity, .profile-journey, .profile-workspace, .profile-access { grid-column: 1 / -1; }
   .copilot-drawer { width: var(--copilot-width); }
+  .knowledge-graph { min-height: 540px; }
   .control-editor { grid-template-columns: 1fr 1fr; }
   .control-editor .app-button { width: 100%; }
   .compliance-toolbar { align-items: stretch; flex-direction: column; }
@@ -462,6 +493,9 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .copilot-window-controls { flex-wrap: wrap; justify-content: flex-end; }
   .copilot-window-controls > button:not(.icon-button) { font-size: .62rem; }
   .copilot-form { grid-template-columns: 1fr; }
+  .knowledge-graph { min-height: 480px; padding: 12px; }
+  .graph-toolbar { align-items: flex-start; flex-direction: column; }
+  .project-graph-canvas { height: 320px; }
   .copilot-form button { width: 100%; }
   .score-explanation, .control-meta { grid-template-columns: 1fr; }
   .control-editor, .evidence-form { grid-template-columns: 1fr; }

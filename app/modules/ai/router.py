@@ -97,6 +97,10 @@ async def create_copilot_response(request: Request, thread_id: uuid.UUID, data: 
         sources=turn.sources,
         references=turn.references,
         warnings=turn.warnings,
+        candidate_extraction_attempted=turn.candidate_extraction_attempted,
+        candidate_count=turn.candidate_count,
+        candidate_types=turn.candidate_types or [],
+        candidate_extraction_failed=turn.candidate_extraction_failed,
     )
 
 

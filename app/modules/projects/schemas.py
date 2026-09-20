@@ -10,7 +10,7 @@ MemberRole = Literal["owner", "founder", "admin", "member", "viewer"]
 MembershipStatus = Literal["invited", "active", "revoked"]
 OnboardingField = Literal["activity", "sector", "technology", "data", "market", "location"]
 OnboardingStatus = Literal["in_progress", "complete"]
-FactDomain = Literal["activity", "sector", "technology", "data", "market", "location"]
+FactDomain = Literal["activity", "sector", "technology", "data", "market", "location", "provider"]
 FactOrigin = Literal["inferred", "user_declared"]
 FactStatus = Literal["pending_confirmation", "confirmed", "corrected", "deleted"]
 FactUncertainty = Literal["high", "medium", "low"]
@@ -115,6 +115,12 @@ class ProjectFactProvenanceResponse(BaseModel):
     excerpt: str
     rule: str | None = None
     correction: str | None = None
+    source_locator: str | None = None
+    extraction_method: str | None = None
+    source: str | None = None
+    conversation_id: str | None = None
+    message_id: str | None = None
+    operation: Literal["ADD", "REMOVE"] | None = None
 
 
 class ProjectFactResponse(BaseModel):
