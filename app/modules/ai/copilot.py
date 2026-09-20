@@ -11,6 +11,7 @@ from app.modules.ai.contracts import OrchestrationRequest
 from app.modules.ai.orchestration import Orchestrator
 from app.modules.ai.services import ConversationService
 from app.modules.identity.schemas import AuthenticatedPrincipal
+from app.modules.projects.service import ProjectService
 
 
 @dataclass(frozen=True)
@@ -21,12 +22,30 @@ class CopilotTurn:
     sources: list[str]
     references: list[str]
     warnings: list[str]
+    candidate_extraction_attempted: bool = False
+    candidate_count: int = 0
+    candidate_types: list[str] | None = None
+    candidate_extraction_failed: bool = False
 
 
 class ProjectCopilotService:
     def __init__(self, conversation_service: ConversationService, orchestrator: Orchestrator) -> None:
         self.conversations = conversation_service
         self.orchestrator = orchestrator
+
+    async def _capture_candidates(
+        self,
+        actor: AuthenticatedPrincipal,
+        *,
+        project_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_id: uuid.UUID,
+        content: str,
+    ):
+        """Small override seam for focused failure-isolation tests."""
+        return await ProjectService(self.conversations.session).capture_conversation_knowledge_candidates(
+            actor, project_id, conversation_id, message_id, content
+        )
 
     async def respond(
         self,
@@ -106,6 +125,33 @@ class ProjectCopilotService:
             public_warnings.append("La couverture des sources est partielle. Les points non couverts sont signalés dans la réponse.")
         if outcome.results and outcome.results[0].structured_payload.get("verification_verdict") != "pass":
             public_warnings.append("Certains éléments n’ont pas pu être vérifiés avec une fiabilité suffisante.")
+        # Candidate capture is intentionally independent from generation. It
+        # sees user-authored content only; a local capture failure must not
+        # suppress a successfully generated Copilot answer.
+        candidate_extraction_failed = False
+        candidates = []
+        try:
+            candidates = await self._capture_candidates(
+                actor,
+                project_id=thread.subject_id,
+                conversation_id=thread.id,
+                message_id=user_message.id,
+                content=user_message.content,
+            )
+        except Exception:
+            candidate_extraction_failed = True
+        candidate_payload = [
+            {
+                "id": str(candidate.id),
+                "domain": candidate.domain,
+                "value": candidate.value,
+                "status": candidate.status,
+                "operation": (candidate.provenance or {}).get("operation", "ADD"),
+                "source": "COPILOT_CONVERSATION",
+            }
+            for candidate in candidates[:8]
+        ]
+        candidate_types = sorted({candidate.domain for candidate in candidates})
         assistant_message = await self.conversations.add_internal_message(
             thread.id,
             role="assistant",
@@ -116,6 +162,11 @@ class ProjectCopilotService:
                 "references": references,
                 "warnings": public_warnings,
                 "orchestration_status": outcome.status,
+                "candidate_extraction_attempted": True,
+                "candidate_extraction_failed": candidate_extraction_failed,
+                "candidate_count": len(candidate_payload),
+                "candidate_types": candidate_types,
+                "knowledge_candidates": candidate_payload,
             },
         )
         await self.orchestrator.complete_copilot_turn(orchestration_request, outcome.root_run_id, pipeline_active=outcome.pipeline_active)
@@ -126,4 +177,8 @@ class ProjectCopilotService:
             sources=sources,
             references=references,
             warnings=public_warnings,
+            candidate_extraction_attempted=True,
+            candidate_count=len(candidate_payload),
+            candidate_types=candidate_types,
+            candidate_extraction_failed=candidate_extraction_failed,
         )

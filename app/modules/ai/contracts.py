@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.ai.projections import AssessmentProjection, ContractAnalysisProjection, DocumentProjection, RoadmapProjection
+from app.modules.projects.knowledge_graph import GraphContext
 
 
 class OrchestrationRequest(BaseModel):
@@ -66,6 +67,7 @@ class AuthorizedContext(BaseModel):
     roadmap: RoadmapProjection | None = None
     document: DocumentProjection | None = None
     contract_analysis: ContractAnalysisProjection | None = None
+    graph_context: GraphContext | None = None
 
 
 class AgentRequest(BaseModel):

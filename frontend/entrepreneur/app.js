@@ -14,7 +14,7 @@
 
   const state = {
     user: null, projects: [], project: null, view: 'dashboard', tab: 'overview',
-    onboarding: null, facts: [], assessment: null, assessments: [], roadmap: null, roadmapSourceAssessment: null,
+    onboarding: null, facts: [], graph: null, graphError: null, assessment: null, assessments: [], roadmap: null, roadmapSourceAssessment: null,
     documents: [], documentFilter: 'all', members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [], documentPollTimer: null, documentPollAttempts: 0,
     editingFactId: null,
     copilot: { visible: false, mode: 'docked', unread: false, projectId: null, conversationId: null, messages: [], loading: false, historyLoading: false, error: '', notice: '', controller: null, historyController: null, generationConversationId: null, requestId: null, status: null, pollTimer: null, pollAttempts: 0, context: { documentId: null, versionId: null, analysisId: null } },
@@ -243,12 +243,18 @@
       ...(state.roadmap ? ['Quelles sont mes prochaines étapes ?'] : []),
     ] : [];
     quick.innerHTML = suggestions.map((question) => `<button type="button" data-copilot-question="${views.escape(question)}">${views.escape(question)}</button>`).join('');
+    const candidateLabel = { technology: 'Technologie', data: 'Données', market: 'Marché', provider: 'Fournisseur / infrastructure' };
+    const knowledgeCandidates = (message) => Array.isArray(message?.content_json?.knowledge_candidates) ? message.content_json.knowledge_candidates : [];
+    const candidateCards = (message) => knowledgeCandidates(message).map((candidate) => {
+      const removal = candidate.operation === 'REMOVE';
+      return `<section class="copilot-knowledge-candidates" aria-label="Informations détectées sur votre projet"><p>INFORMATIONS DÉTECTÉES SUR VOTRE PROJET</p><article class="copilot-knowledge-candidate"><div><strong>${views.escape(candidate.value)}</strong><span>${views.escape(removal ? `Retirer : ${candidateLabel[candidate.domain] || candidate.domain}` : candidateLabel[candidate.domain] || candidate.domain)}</span><small>À confirmer</small></div><div class="copilot-candidate-actions"><button type="button" data-action="confirm-fact" data-fact-id="${views.escape(candidate.id)}">${removal ? 'Confirmer le retrait' : 'Confirmer'}</button><button type="button" data-action="correct-fact" data-from-copilot="true" data-fact-id="${views.escape(candidate.id)}">Corriger</button><button type="button" data-action="reject-fact" data-fact-id="${views.escape(candidate.id)}">Rejeter</button></div></article></section>`;
+    }).join('');
     messages.innerHTML = state.copilot.messages.length
       ? state.copilot.messages.filter((message) => ['user', 'assistant'].includes(message.role)).map((message) => {
         const sources = copilotSources(message);
         const warnings = copilotWarnings(message);
         const references = copilotReferences(message);
-        return `<article class="copilot-message copilot-message-${views.escape(message.role)}"><span>${views.escape(message.content)}</span>${references.length ? `<div class="copilot-references" aria-label="Références utilisées">${references.map((reference) => `<span>${views.escape(reference)}</span>`).join('')}</div>` : ''}${sources.length ? `<div class="copilot-sources"><strong>Sources utilisées</strong>${sources.map((source) => `<span>${views.escape(source)}</span>`).join('')}</div>` : ''}${warnings.length ? `<div class="copilot-warnings">${warnings.map((warning) => `<span>${views.escape(warning)}</span>`).join('')}</div>` : ''}${message.created_at ? `<time>${views.date(message.created_at)}</time>` : ''}</article>`;
+        return `<article class="copilot-message copilot-message-${views.escape(message.role)}"><span>${views.escape(message.content)}</span>${references.length ? `<div class="copilot-references" aria-label="Références utilisées">${references.map((reference) => `<span>${views.escape(reference)}</span>`).join('')}</div>` : ''}${sources.length ? `<div class="copilot-sources"><strong>Sources utilisées</strong>${sources.map((source) => `<span>${views.escape(source)}</span>`).join('')}</div>` : ''}${warnings.length ? `<div class="copilot-warnings">${warnings.map((warning) => `<span>${views.escape(warning)}</span>`).join('')}</div>` : ''}${candidateCards(message)}${message.created_at ? `<time>${views.date(message.created_at)}</time>` : ''}</article>`;
       }).join('')
       : '<p class="copilot-empty">Posez une question réglementaire sur votre projet. La réponse utilisera uniquement le contexte autorisé et les sources disponibles.</p>';
     messages.scrollTop = messages.scrollHeight;
@@ -481,14 +487,17 @@
 
   async function loadProjectContext() {
     if (!state.project) {
-      Object.assign(state, { onboarding: null, facts: [], assessment: null, assessments: [], roadmap: null, roadmapSourceAssessment: null, documents: [], members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [] });
+      Object.assign(state, { onboarding: null, facts: [], graph: null, graphError: null, assessment: null, assessments: [], roadmap: null, roadmapSourceAssessment: null, documents: [], members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [] });
       return;
     }
     const id = state.project.id;
     const [onboarding, facts, assessment, roadmap, documents] = await Promise.all([
       state.project.project_type === 'idea' ? safe(() => api.getOnboarding(id)) : Promise.resolve(null), safe(() => api.facts(id), []), safe(() => api.latestAssessment(id)), safe(() => api.latestRoadmap(id)), safe(() => loadDocuments(id), []),
     ]);
-    Object.assign(state, { onboarding, facts, assessment, roadmap, documents });
+    let graph = null;
+    let graphError = null;
+    try { graph = await api.knowledgeGraph(id); } catch (error) { graphError = error?.status === 401 || error?.status === 403 || error?.status === 404 ? 'authorization' : 'technical'; }
+    Object.assign(state, { onboarding, facts, graph, graphError, assessment, roadmap, documents });
   }
 
   function requireProject() {
@@ -508,6 +517,7 @@
     else if (state.view === 'project' || state.view === 'facts') {
       const history = state.tab === 'history' ? await safe(() => api.lifecycleHistory(state.project.id), []) : [];
       workspace.innerHTML = views.project({ ...state, history, tab: state.view === 'facts' ? 'facts' : state.tab });
+      if (state.tab === 'graph') window.RegBridgeKnowledgeGraph?.mount(workspace.querySelector('[data-project-graph]'), state.graph);
     } else if (state.view === 'regulatory') {
       state.assessments = await safe(() => api.assessments(state.project.id), []);
       if (routeState.version) state.assessment = await safe(() => api.assessment(state.project.id, routeState.version), state.assessment);
@@ -600,6 +610,7 @@
     if (name === 'create-project') return navigate('create', { projectId: null });
     if (name === 'profile-logout') return logout();
     if (name === 'open-project') return navigate('project');
+    if (name === 'open-graph') return navigate('project', { tab: 'graph' });
     if (name === 'open-onboarding') return state.project?.project_type === 'idea' ? navigate('onboarding') : navigate('project');
     if (name === 'open-facts') return navigate('facts');
     if (name === 'open-regulatory') return navigate('regulatory');
@@ -639,8 +650,10 @@
     }
     if (name === 'confirm-fact') return perform(target, 'Confirmation…', () => api.confirmFact(state.project.id, target.dataset.factId), loadRoute);
     if (name === 'reject-fact') return perform(target, 'Rejet…', () => api.rejectFact(state.project.id, target.dataset.factId), loadRoute);
+    if (name === 'enrich-knowledge') return perform(target, 'Suggestions...', () => api.enrichKnowledgeCandidates(state.project.id), () => navigate('facts'));
     if (name === 'correct-fact') {
       state.editingFactId = target.dataset.factId;
+      if (target.dataset.fromCopilot === 'true') return navigate('facts');
       return renderView(route());
     }
     if (name === 'cancel-fact-correction') { state.editingFactId = null; return renderView(route()); }

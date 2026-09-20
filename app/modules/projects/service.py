@@ -10,6 +10,11 @@ from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.audit import AuditLog
 from app.modules.projects.authorization import ProjectAuthorizationPolicy
 from app.modules.projects.facts import extract_project_facts
+from app.modules.projects.knowledge_enrichment import (
+    ConversationKnowledgeCandidateExtractor,
+    ProjectKnowledgeCandidateExtractor,
+    normalize_concept_key,
+)
 from app.modules.projects.models import Project, ProjectFact, ProjectMember
 from app.modules.projects.onboarding import onboarding_status
 from app.modules.projects.schemas import IdeaOnboardingUpdate, IdeaProjectCreate, ProjectCreate, ProjectLifecycleHistoryResponse, ProjectMemberInvite, ProjectMemberUpdate, ProjectUpdate
@@ -120,6 +125,155 @@ class ProjectService:
         await self.session.commit()
         return created
 
+    async def enrich_knowledge_candidates(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID) -> list[ProjectFact]:
+        """Create reviewable graph candidates from explicit profile lists only.
+
+        This intentionally reuses ``project_facts``: the graph has no mutable
+        fact store and candidates remain excluded until an editor confirms them.
+        """
+        project = await self._project(project_id)
+        membership = await self._membership(project_id, actor.user_id, active_only=True)
+        self.policy.require(self.policy.can_edit(membership))
+        existing_facts = list((await self.session.scalars(
+            select(ProjectFact).where(ProjectFact.project_id == project_id)
+        )).all())
+        existing = {
+            (fact.domain, normalize_concept_key(fact.value))
+            for fact in existing_facts
+            if fact.status != "deleted"
+        }
+        created: list[ProjectFact] = []
+        for candidate in ProjectKnowledgeCandidateExtractor().extract(
+            technology=project.technology,
+            data_context=project.data_context,
+        ):
+            key = (candidate.domain, candidate.concept.normalized_key)
+            if key in existing:
+                continue
+            fact = ProjectFact(project_id=project_id, **candidate.as_project_fact_payload())
+            self.session.add(fact)
+            created.append(fact)
+            existing.add(key)
+        await self._audit(
+            actor,
+            "project.knowledge_candidates_created",
+            project.id,
+            project.id,
+            "project_fact",
+            {"count": len(created), "domains": sorted({fact.domain for fact in created}), "method": "structured_delimited_v1"},
+        )
+        await self.session.commit()
+        return created
+
+    async def capture_conversation_knowledge_candidates(
+        self,
+        actor: AuthenticatedPrincipal,
+        project_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_id: uuid.UUID,
+        content: str,
+    ) -> list[ProjectFact]:
+        """Persist conservative user-message proposals through ``project_facts``.
+
+        Authorization is deliberately repeated here even though Copilot already
+        checked the conversation.  A guessed fact/message/project identifier is
+        never sufficient to create or later mutate project knowledge.
+        """
+        project = await self._project(project_id)
+        membership = await self._membership(project_id, actor.user_id, active_only=True)
+        self.policy.require(self.policy.can_edit(membership))
+        candidates = ConversationKnowledgeCandidateExtractor().extract(
+            project_id=project.id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            content=content,
+        )
+        if not candidates:
+            return []
+        existing_facts = list((await self.session.scalars(
+            select(ProjectFact).where(ProjectFact.project_id == project_id)
+        )).all())
+        existing = {
+            (fact.domain, normalize_concept_key(fact.value))
+            for fact in existing_facts
+            if fact.status != "deleted"
+        }
+        existing_sources = {
+            (
+                str((fact.provenance or {}).get("conversation_id") or ""),
+                str((fact.provenance or {}).get("message_id") or ""),
+                str((fact.provenance or {}).get("operation") or "ADD"),
+            )
+            for fact in existing_facts
+            if (fact.provenance or {}).get("source") == "COPILOT_CONVERSATION"
+        }
+        created: list[ProjectFact] = []
+        for candidate in candidates:
+            if candidate.operation == "REMOVE":
+                # The message grammar intentionally does not guess whether a
+                # named service was a provider or technology. Existing trusted
+                # project knowledge may safely resolve that exact relation.
+                matching_fact = next(
+                    (
+                        fact for fact in existing_facts
+                        if fact.status in {"confirmed", "corrected"}
+                        and normalize_concept_key(fact.value) == candidate.normalized_value
+                        and fact.domain in {"technology", "data", "market", "provider"}
+                    ),
+                    None,
+                )
+                if matching_fact is not None and matching_fact.domain != candidate.domain:
+                    type_and_relation = {
+                        "technology": ("TECHNOLOGY", "USES_TECHNOLOGY"),
+                        "data": ("DATA_CATEGORY", "PROCESSES_DATA"),
+                        "market": ("MARKET", "TARGETS_MARKET"),
+                        "provider": ("PROVIDER", "USES_PROVIDER"),
+                    }[matching_fact.domain]
+                    candidate = candidate.model_copy(update={
+                        "domain": matching_fact.domain,
+                        "concept_type": type_and_relation[0],
+                        "relation_type": type_and_relation[1],
+                    })
+            key = (candidate.domain, candidate.normalized_value)
+            source_key = (str(conversation_id), str(message_id), candidate.operation)
+            # Existing trusted and pending knowledge wins. A rejected candidate
+            # is also not recreated from its same durable source message.
+            if (candidate.operation == "ADD" and key in existing) or source_key in existing_sources:
+                continue
+            provenance = candidate.as_project_fact_payload()["provenance"]
+            if candidate.operation == "ADD":
+                conflicting = [
+                    fact.value for fact in existing_facts
+                    if fact.domain == candidate.domain
+                    and fact.status in {"confirmed", "corrected"}
+                    and normalize_concept_key(fact.value) != candidate.normalized_value
+                ]
+                if conflicting:
+                    provenance["conflict_requires_clarification"] = True
+                    provenance["conflicting_values"] = conflicting[:3]
+            payload = candidate.as_project_fact_payload()
+            payload["provenance"] = provenance
+            fact = ProjectFact(project_id=project_id, **payload)
+            self.session.add(fact)
+            created.append(fact)
+            existing.add(key)
+            existing_sources.add(source_key)
+        if created:
+            await self._audit(
+                actor,
+                "project.conversation_knowledge_candidates_created",
+                project_id,
+                project_id,
+                "project_fact",
+                {
+                    "count": len(created),
+                    "domains": sorted({fact.domain for fact in created}),
+                    "method": "conversation_deterministic_v1",
+                },
+            )
+            await self.session.commit()
+        return created
+
     async def _fact_for_editor(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID) -> ProjectFact:
         project = await self._project(project_id)
         membership = await self._membership(project_id, actor.user_id, active_only=True)
@@ -131,9 +285,26 @@ class ProjectService:
 
     async def confirm_fact(self, actor: AuthenticatedPrincipal, project_id: uuid.UUID, fact_id: uuid.UUID) -> ProjectFact:
         fact = await self._fact_for_editor(actor, project_id, fact_id)
-        if fact.status != "deleted":
+        provenance = dict(fact.provenance or {})
+        if provenance.get("source") == "COPILOT_CONVERSATION" and provenance.get("operation") == "REMOVE":
+            matching = list((await self.session.scalars(
+                select(ProjectFact).where(
+                    ProjectFact.project_id == project_id,
+                    ProjectFact.domain == fact.domain,
+                    ProjectFact.status.in_(["confirmed", "corrected"]),
+                )
+            )).all())
+            removed = 0
+            target_key = normalize_concept_key(fact.value)
+            for existing in matching:
+                if normalize_concept_key(existing.value) == target_key:
+                    existing.status = "deleted"
+                    removed += 1
+            fact.status = "deleted"
+            await self._audit(actor, "project.fact_removal_confirmed", project_id, fact.id, "project_fact", {"domain": fact.domain, "removed": removed})
+        elif fact.status != "deleted":
             fact.status = "confirmed"
-        await self._audit(actor, "project.fact_confirmed", project_id, fact.id, "project_fact", {"domain": fact.domain})
+            await self._audit(actor, "project.fact_confirmed", project_id, fact.id, "project_fact", {"domain": fact.domain})
         await self.session.commit()
         return fact
 
@@ -143,7 +314,11 @@ class ProjectService:
         provenance.setdefault("original_value", fact.value)
         provenance["correction"] = "user-provided correction"
         fact.value = value
-        fact.status = "corrected"
+        # A conversation proposal remains pending after an edit. Confirmation is
+        # the deliberate trust transition; historical fact corrections retain
+        # their established ``corrected`` lifecycle for backwards compatibility.
+        if not (provenance.get("source") == "COPILOT_CONVERSATION" and fact.status == "pending_confirmation"):
+            fact.status = "corrected"
         fact.provenance = provenance
         await self._audit(actor, "project.fact_corrected", project_id, fact.id, "project_fact", {"domain": fact.domain})
         await self.session.commit()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -30,6 +31,7 @@ from app.modules.regulatory.authoritative_sources import AuthoritativeSourceRetr
 from app.modules.regulatory.verification import ResponseVerificationService, VerificationResult
 from app.modules.ai.pipeline import PipelineStageRecorder
 from app.modules.ai.pipeline_types import EvidenceStatus, PipelineStage
+from app.modules.projects.knowledge_graph import KnowledgeNodeType, KnowledgeRelation
 
 
 SYSTEM_INSTRUCTIONS = """You are RegBridge's regulatory information assistant.
@@ -87,6 +89,12 @@ class RegulatoryAgent(Agent):
     async def run(self, request: AgentRequest, *, pipeline: PipelineStageRecorder | None = None) -> AgentResult:
         if not request.question.strip():
             return self._failure("invalid_question", "A regulatory question is required")
+        project_fact_result = _trusted_project_fact_result(request)
+        if project_fact_result is not None:
+            # This is deliberately a deterministic response about an already
+            # confirmed project fact.  It is not regulatory advice and must not
+            # trigger regulatory retrieval, generation, or verification.
+            return project_fact_result
         if requests_assessment_context(request.question) and request.authorized_context.assessment is None:
             return self._context_only_result("Aucune évaluation réglementaire n’est encore disponible pour ce projet.", "assessment_unavailable")
         if requests_roadmap_context(request.question) and request.authorized_context.roadmap is None:
@@ -106,7 +114,7 @@ class RegulatoryAgent(Agent):
                 status="succeeded",
                 answer=_clarification_answer(request.question),
                 warnings=["La demande doit être précisée avant de rechercher des sources réglementaires."],
-                structured_payload={**resolution_payload, "generation_skipped": True},
+                structured_payload={**resolution_payload, **_graph_context_payload(request), "generation_skipped": True},
             )
         if pipeline is not None:
             await pipeline.start(PipelineStage.RETRIEVING_EVIDENCE)
@@ -308,7 +316,7 @@ class RegulatoryAgent(Agent):
                     sources=_unique_organizations(evidence),
                     evidence=[item.model_dump(mode="json") for item in evidence],
                     warnings=["Les sources disponibles ne permettent pas de répondre de manière fiable sur tous les points."],
-                    structured_payload={"evidence_status": evidence_assessment.status.value, **assessment_payload, "generation_skipped": True},
+                    structured_payload={"evidence_status": evidence_assessment.status.value, **assessment_payload, **_graph_context_payload(request), "generation_skipped": True},
                 )
 
         evidence_prompt = "\n\n".join(
@@ -431,6 +439,7 @@ class RegulatoryAgent(Agent):
                 "roadmap_source_refs": _roadmap_source_refs(roadmap),
                 "document_version": request.authorized_context.document.version_number if request.authorized_context.document else None,
                 "contract_analysis_id": str(request.authorized_context.contract_analysis.id) if request.authorized_context.contract_analysis else None,
+                **_graph_context_payload(request),
                 **_execution_payload("generation", generated.execution),
                 **_verification_payload(verification),
             },
@@ -483,8 +492,96 @@ class RegulatoryAgent(Agent):
             sources=_unique_organizations(evidence),
             evidence=[item.model_dump(mode="json") for item in evidence],
             warnings=warnings,
-            structured_payload={"evidence_status": assessment.status.value, **payload, "generation_skipped": True},
+            structured_payload={"evidence_status": assessment.status.value, **payload, **_graph_context_payload(request), "generation_skipped": True},
         )
+
+
+def _graph_context_payload(request: AgentRequest) -> dict[str, str | int | bool | None]:
+    graph = request.authorized_context.graph_context
+    return {
+        "graph_context_used": graph is not None,
+        "graph_nodes_selected": len(graph.nodes) if graph else 0,
+        "graph_edges_selected": len(graph.edges) if graph else 0,
+        "graph_node_types": ", ".join(sorted({node.type.value for node in graph.nodes})) if graph else None,
+        "graph_max_depth": graph.max_depth if graph else None,
+    }
+
+
+def _trusted_project_fact_result(request: AgentRequest) -> AgentResult | None:
+    """Answer one narrow project-fact question from the trusted graph only.
+
+    The Copilot currently routes through the regulatory capability.  A question
+    such as "Which cloud provider does my project use?" is not a legal question,
+    however, and Qdrant cannot establish the answer.  Keep this path intentionally
+    narrow and deterministic so graph context can never become legal evidence.
+    """
+    graph = request.authorized_context.graph_context
+    if graph is None:
+        return None
+    normalized = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", request.question.casefold())
+        if not unicodedata.combining(character)
+    )
+    normalized = re.sub(r"\s+", " ", normalized)
+    asks_project = any(term in normalized for term in (
+        "mon projet", "my project", "notre projet", "our project", "ce projet", "this project",
+    )) or any(
+        term in normalized for term in ("marche cible", "target market")
+    )
+    asks_regulatory = any(term in normalized for term in ("obligation", "reglement", "conformite"))
+    if not asks_project or asks_regulatory:
+        return None
+    relation: KnowledgeRelation | None = None
+    node_type: KnowledgeNodeType | None = None
+    response_prefix = ""
+    if any(term in normalized for term in ("fournisseur", "provider", "hebergeur")):
+        relation, node_type = KnowledgeRelation.USES_PROVIDER, KnowledgeNodeType.PROVIDER
+        response_prefix = "Votre projet utilise"
+    elif "secteur" in normalized:
+        relation, node_type = KnowledgeRelation.HAS_SECTOR, KnowledgeNodeType.SECTOR
+        response_prefix = "Le secteur confirmé de votre projet est"
+    elif any(term in normalized for term in ("marche cible", "target market")):
+        relation, node_type = KnowledgeRelation.TARGETS_MARKET, KnowledgeNodeType.MARKET
+        response_prefix = "Le marché cible confirmé de votre projet est"
+    elif any(term in normalized for term in ("geographique", "localisation", "ou opere")) or (
+        "opere" in normalized and "actuellement" in normalized
+    ):
+        relation, node_type = KnowledgeRelation.OPERATES_IN, KnowledgeNodeType.GEOGRAPHY
+        response_prefix = "La localisation d’opération actuellement confirmée pour votre projet est"
+    if relation is None or node_type is None:
+        return None
+    nodes = {node.id: node for node in graph.nodes}
+    matching_nodes = [
+        nodes[edge.target]
+        for edge in graph.edges
+        if edge.relation == relation and edge.target in nodes
+        and nodes[edge.target].type == node_type
+    ]
+    if not matching_nodes:
+        return None
+    labels = list(dict.fromkeys(node.label for node in matching_nodes))
+    if relation == KnowledgeRelation.USES_PROVIDER:
+        answer = (
+            f"{response_prefix} {labels[0]} comme fournisseur d’hébergement."
+            if len(labels) == 1
+            else f"Votre projet indique utiliser les fournisseurs suivants : {', '.join(labels)}."
+        )
+    else:
+        answer = f"{response_prefix} : {', '.join(labels)}."
+    return AgentResult(
+        agent_name="regulatory-agent",
+        capability=request.capability,
+        status="succeeded",
+        answer=answer,
+        warnings=["Réponse fondée sur une information confirmée du projet, et non sur une source réglementaire."],
+        structured_payload={
+            "answer_source": "PROJECT_GRAPH",
+            "generation_skipped": True,
+            "regulatory_retrieval_skipped": True,
+            **_graph_context_payload(request),
+        },
+    )
 
 
 def _context_text(request: AgentRequest) -> str:
@@ -533,6 +630,15 @@ def _context_text(request: AgentRequest) -> str:
             "CONTRACT ANALYSIS\n"
             f"Status: {analysis.status}\n"
             + "\n".join(f"{item.category}: {item.source_quote}" for item in analysis.observations)
+        )
+    if context.graph_context is not None:
+        graph = context.graph_context
+        node_lines = [f"{node.type.value}: {node.label}" for node in graph.nodes]
+        labels = {node.id: node.label for node in graph.nodes}
+        edge_lines = [f"{labels.get(edge.source, 'Project')} {edge.relation.value} {labels.get(edge.target, 'context node')}" for edge in graph.edges]
+        sections.append(
+            "TRUSTED PROJECT KNOWLEDGE GRAPH (supplemental project context; not regulatory evidence)\n"
+            + "\n".join(node_lines + edge_lines)
         )
     return "\n".join(sections) or "Authorized project context is empty."
 

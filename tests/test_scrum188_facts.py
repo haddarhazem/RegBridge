@@ -23,6 +23,17 @@ def test_negation_is_respected_and_business_coaching_is_not_generated():
     assert not any("conseil" in value.lower() or "croissance" in value.lower() for _, value in values)
 
 
+def test_b2b_product_language_and_planned_expansion_do_not_become_current_sector_or_location_facts():
+    facts = extract_project_facts(
+        "Nous vendons un logiciel B2B aux entreprises clientes. "
+        "Le lancement est prévu en France avant une éventuelle expansion vers l'Union européenne."
+    )
+    values = {(fact["domain"], fact["value"]) for fact in facts}
+    assert ("sector", "logiciel B2B") not in values
+    assert ("sector", "services B2B") not in values
+    assert not any(domain == "location" for domain, _ in values)
+
+
 @pytest.mark.asyncio
 async def test_context_builder_exposes_only_confirmed_project_facts():
     project_id = uuid.uuid4()

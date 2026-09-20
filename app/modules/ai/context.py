@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from app.modules.ai.contracts import AuthorizedContext, OrchestrationRequest
 from app.modules.ai.projections import AssessmentProjection, ContractAnalysisProjection, DocumentProjection, RoadmapProjection
 from app.modules.identity.schemas import AuthenticatedPrincipal
+from app.modules.projects.knowledge_graph import GraphContextProvider, ProjectKnowledgeGraphBuilder
 
 
 class ContextAuthorizationError(Exception):
@@ -56,6 +57,8 @@ class ProjectContextRepository(Protocol):
     async def load_document_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID) -> DocumentProjection | None: ...
 
     async def load_contract_analysis_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, analysis_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID) -> ContractAnalysisProjection | None: ...
+
+    async def load_knowledge_graph_projection(self, project_id: uuid.UUID): ...
 
 
 def _normalized_question(question: str) -> str:
@@ -102,9 +105,10 @@ class ProjectAuthorizationService:
 
 
 class AuthorizedContextBuilder:
-    def __init__(self, repository: ProjectContextRepository, authorization: ProjectAuthorizationService) -> None:
+    def __init__(self, repository: ProjectContextRepository, authorization: ProjectAuthorizationService, graph_context_provider: GraphContextProvider | None = None) -> None:
         self.repository = repository
         self.authorization = authorization
+        self.graph_context_provider = graph_context_provider or GraphContextProvider()
 
     async def build(self, request: OrchestrationRequest, capabilities: list[str]) -> AuthorizedContext:
         if request.subject_type is None:
@@ -119,6 +123,7 @@ class AuthorizedContextBuilder:
         roadmap = None
         document = None
         contract_analysis = None
+        graph_context = None
         if requests_assessment_context(request.question):
             loader = getattr(self.repository, "load_latest_assessment_projection", None)
             if loader is not None:
@@ -139,6 +144,11 @@ class AuthorizedContextBuilder:
                 contract_analysis = await loader(request.subject_id, request.principal.user_id, request.context_analysis_id, request.context_document_id, request.context_version_id)
             if contract_analysis is None:
                 raise ContextAuthorizationError("Contract analysis context access denied")
+        graph_loader = getattr(self.repository, "load_knowledge_graph_projection", None)
+        if graph_loader is not None:
+            graph_projection = await graph_loader(request.subject_id)
+            if graph_projection is not None:
+                graph_context = self.graph_context_provider.select(ProjectKnowledgeGraphBuilder().build(graph_projection), request.question)
         return AuthorizedContext(
             subject_type="project",
             subject_id=request.subject_id,
@@ -156,6 +166,7 @@ class AuthorizedContextBuilder:
             roadmap=roadmap,
             document=document,
             contract_analysis=contract_analysis,
+            graph_context=graph_context,
         )
 
 

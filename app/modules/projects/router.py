@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
@@ -14,6 +14,8 @@ from app.modules.projects.schemas import IdeaOnboardingResponse, IdeaOnboardingU
 from app.modules.projects.service import ProjectService
 from app.modules.projects.matching_service import ResearchMatchingService
 from app.modules.projects.schemas import ResearchNeedPayload, ResearchNeedResponse, ResearchMatchRunResponse, ResearchMatchResultResponse
+from app.modules.projects.knowledge_graph import ProjectKnowledgeGraph, ProjectKnowledgeGraphAccessDenied, ProjectKnowledgeGraphService
+from app.modules.projects.repositories import ProjectContextRepository
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -108,6 +110,18 @@ async def get_project(project_id: uuid.UUID, principal: Principal, session: Sess
     return project_response(project, membership)
 
 
+@router.get("/{project_id}/knowledge-graph", response_model=ProjectKnowledgeGraph)
+async def get_project_knowledge_graph(project_id: uuid.UUID, principal: Principal, session: Session, trusted_only: bool = True) -> ProjectKnowledgeGraph:
+    """Return the authorized, derived project graph; never a mutable graph store."""
+    if not trusted_only:
+        # V1 intentionally has no pending/untrusted graph mode.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only trusted graph data is available")
+    try:
+        return await ProjectKnowledgeGraphService(ProjectContextRepository(session)).get_trusted_graph(project_id, principal.user_id)
+    except ProjectKnowledgeGraphAccessDenied:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project knowledge graph not found")
+
+
 @router.get("/{project_id}/onboarding", response_model=IdeaOnboardingResponse)
 async def get_onboarding(project_id: uuid.UUID, principal: Principal, session: Session) -> IdeaOnboardingResponse:
     project = await ProjectService(session).get_idea_for_user(principal, project_id)
@@ -177,6 +191,13 @@ async def lifecycle_history(project_id: uuid.UUID, principal: Principal, session
 @router.post("/{project_id}/facts/infer", response_model=list[ProjectFactResponse])
 async def infer_project_facts(project_id: uuid.UUID, principal: Principal, session: Session) -> list[ProjectFactResponse]:
     facts = await ProjectService(session).infer_facts(principal, project_id)
+    return [fact_response(fact) for fact in facts]
+
+
+@router.post("/{project_id}/facts/enrich", response_model=list[ProjectFactResponse])
+async def enrich_project_knowledge_candidates(project_id: uuid.UUID, principal: Principal, session: Session) -> list[ProjectFactResponse]:
+    """Propose bounded semantic concepts; confirmation remains a separate action."""
+    facts = await ProjectService(session).enrich_knowledge_candidates(principal, project_id)
     return [fact_response(fact) for fact in facts]
 
 

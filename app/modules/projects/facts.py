@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-FactDomain = Literal["activity", "sector", "technology", "data", "market", "location"]
+FactDomain = Literal["activity", "sector", "technology", "data", "market", "location", "provider"]
 FactOrigin = Literal["inferred", "user_declared"]
 FactStatus = Literal["pending_confirmation", "confirmed", "corrected", "deleted"]
 FactUncertainty = Literal["high", "medium", "low"]
@@ -22,6 +22,12 @@ class FactProvenance(BaseModel):
     excerpt: str = Field(min_length=1, max_length=300)
     rule: str | None = Field(default=None, max_length=120)
     correction: str | None = Field(default=None, max_length=300)
+    source_locator: str | None = Field(default=None, max_length=120)
+    extraction_method: str | None = Field(default=None, max_length=80)
+    source: str | None = Field(default=None, max_length=80)
+    conversation_id: str | None = Field(default=None, max_length=36)
+    message_id: str | None = Field(default=None, max_length=36)
+    operation: Literal["ADD", "REMOVE"] | None = None
 
 
 class ProjectFactDTO(BaseModel):
@@ -83,11 +89,11 @@ def extract_project_facts(description: str) -> list[dict]:
             break
 
     sector_terms = [
-        (("pain", "patisserie"), "alimentation"), (("logiciel b2b", "entreprises clientes"), "logiciel B2B"),
+        (("pain", "patisserie"), "alimentation"),
         (("medecin", "patient", "medical", "sante"), "santé"), (("fintech", "paiement"), "fintech"),
         (("industri", "usine", "capteur"), "industrie"), (("transport", "logistique"), "transport et logistique"),
         (("formation", "education", "etudiant", "scolaire"), "éducation"), (("energetique", "energie"), "énergie"),
-        (("pme", "conseil"), "services B2B"), (("artisan",), "artisanat"), (("secteur public",), "secteur public"),
+        (("artisan",), "artisanat"), (("secteur public",), "secteur public"),
     ]
     for terms, value in sector_terms:
         term = next((term for term in terms if term in text), None)
@@ -117,11 +123,10 @@ def extract_project_facts(description: str) -> list[dict]:
         value = "aucune collecte de données clients" if "collecte de donnees clients" in text else "pas de données médicales" if "donnees medicales" in text else "aucune donnée personnelle"
         facts.append(_fact("data", value, _excerpt(description, "données"), "data-negation"))
 
-    location_terms = [("union europeenne", "Union européenne"), ("france", "France"), ("tunisie", "Tunisie"), ("belgique", "Belgique"), ("lyon", "Lyon"), ("europe", "Europe")]
-    for term, value in location_terms:
-        if term in text:
-            facts.append(_fact("location", value, _excerpt(description, term), "location-explicit"))
-            break
+    # Free text cannot reliably distinguish where the project currently
+    # operates from a target market, data-hosting region, or future expansion.
+    # The confirmed onboarding ``location`` field is the explicit current
+    # operation source; do not create a potentially misleading location fact.
     if "entreprises" in text and "en europe" in text:
         facts.append(_fact("market", "entreprises en Europe", _excerpt(description, "entreprises"), "market-explicit"))
     elif "clients en france" in text:
