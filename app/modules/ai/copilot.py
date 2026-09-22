@@ -123,7 +123,11 @@ class ProjectCopilotService:
             public_warnings.extend(outcome.results[0].warnings)
         if outcome.results and outcome.results[0].structured_payload.get("evidence_status") == "PARTIAL":
             public_warnings.append("La couverture des sources est partielle. Les points non couverts sont signalés dans la réponse.")
-        if outcome.results and outcome.results[0].structured_payload.get("verification_verdict") != "pass":
+        if (
+            outcome.results
+            and outcome.results[0].structured_payload.get("answer_source") not in {"PROJECT_GRAPH", "GENERAL_EXPLANATION"}
+            and outcome.results[0].structured_payload.get("verification_verdict") != "pass"
+        ):
             public_warnings.append("Certains éléments n’ont pas pu être vérifiés avec une fiabilité suffisante.")
         # Candidate capture is intentionally independent from generation. It
         # sees user-authored content only; a local capture failure must not

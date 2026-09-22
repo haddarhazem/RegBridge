@@ -203,6 +203,7 @@ async def test_confirmed_sector_and_current_geography_answers_use_graph_without_
         sector="EnergyTech",
         location="Île-de-France, France",
         market="France",
+        business_model="Abonnement B2B",
         technology=None,
         data=None,
     ))
@@ -225,6 +226,7 @@ async def test_confirmed_sector_and_current_geography_answers_use_graph_without_
     for question, expected in (
         ("Quel est le secteur de mon projet ?", "EnergyTech"),
         ("Quel est le secteur de ce projet ?", "EnergyTech"),
+        ("Quel est le modèle économique de ce projet ?", "Abonnement B2B"),
         ("Quel est le marché cible de mon projet ?", "France"),
         ("Dans quelle zone géographique mon projet opère-t-il actuellement ?", "Île-de-France, France"),
         ("Mon projet opère-t-il actuellement dans toute l’Union européenne ?", "Île-de-France, France"),
@@ -239,6 +241,33 @@ async def test_confirmed_sector_and_current_geography_answers_use_graph_without_
         ))
         assert expected in (result.answer or "")
         assert result.structured_payload["answer_source"] == "PROJECT_GRAPH"
+
+
+@pytest.mark.asyncio
+async def test_unset_business_model_is_reported_as_missing_project_context_without_regulatory_retrieval():
+    graph = ProjectKnowledgeGraphBuilder().build(projection(business_model=None))
+
+    class MustNotRetrieve:
+        async def retrieve(self, _question):
+            raise AssertionError("An unset project business model must not trigger regulatory retrieval")
+
+    class MustNotGenerate:
+        async def generate(self, _request):
+            raise AssertionError("An unset project business model must not trigger generation")
+
+    result = await RegulatoryAgent(retriever=MustNotRetrieve(), provider=MustNotGenerate()).run(AgentRequest(
+        request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(),
+        question="Quel est le modèle économique de ce projet ?", capability="regulatory", locale="fr",
+        subject_type="project", subject_id=uuid.uuid4(),
+        authorized_context=AuthorizedContext(
+            subject_type="project", subject_id=uuid.uuid4(),
+            graph_context=GraphContextProvider().select(graph, "Quel est le modèle économique de ce projet ?"),
+        ),
+    ))
+
+    assert result.answer == "Le modèle économique n’est pas encore renseigné dans les informations confirmées de votre projet."
+    assert result.structured_payload["answer_source"] == "PROJECT_GRAPH"
+    assert result.structured_payload["regulatory_retrieval_skipped"] is True
 
 
 @pytest.mark.asyncio

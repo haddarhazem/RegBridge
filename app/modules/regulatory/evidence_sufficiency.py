@@ -73,7 +73,7 @@ _DOMAINS = ("GENERAL_BUSINESS", "PRIVACY", "AI", "SECURITY_CLOUD", "ENERGY_IOT",
 _QUESTION_SIGNALS = {
     "PRIVACY": ("rgpd", "gdpr", "donnees personnelles", "protection des donnees", "cnil", "traitement de donnees", "vie privee"),
     "AI": ("intelligence artificielle", "ai act", "ia", "systeme d ia", "modele d ia", "machine learning", "ai/ml"),
-    "SECURITY_CLOUD": ("cybersecurite", "securite informatique", "cloud", "hebergement", "hebergeur", "anssi"),
+    "SECURITY_CLOUD": ("cybersecurite", "securite informatique", "cloud", "hebergement", "hebergeur", "anssi", "saas"),
     "ENERGY_IOT": ("energie", "energetique", "compteur intelligent", "iot", "capteur", "consommation energetique"),
     "CONTRACTS": ("contrat", "cgv", "cgu", "nda", "accord", "clause", "obligation contractuelle"),
     "GENERAL_BUSINESS": ("creation d entreprise", "immatriculation", "societe", "formalites", "guichet unique", "forme juridique", "lancer mon entreprise"),
@@ -114,6 +114,18 @@ _LABELS = {
     "ENERGY_IOT": "énergie et objets connectés",
     "CONTRACTS": "contrats",
 }
+
+# Broadening a regulatory request with private project facts is a separate
+# decision from identifying a regulatory topic in the question.  Only an
+# unambiguous project-relative phrase may make that enrichment decision.
+_EXPLICIT_PROJECT_REFERENCES = (
+    "ce projet",
+    "mon projet",
+    "notre projet",
+    "ma plateforme",
+    "mon saas",
+    "dans mon cas",
+)
 
 
 class MissingDomainQueryBuilder:
@@ -201,6 +213,11 @@ class RequiredDomainResolver:
         normalized = _normal(question)
         explicit = {domain: _matched_signals(normalized, signals) for domain, signals in _QUESTION_SIGNALS.items()}
         domains = [domain for domain, signals in explicit.items() if signals]
+        # “SaaS” supplies a cloud-domain topic only for an otherwise broad
+        # generic request. When a more specific domain is explicit, it is a
+        # business descriptor rather than an additional regulatory domain.
+        if len(domains) > 1 and explicit["SECURITY_CLOUD"] == ["saas"]:
+            domains.remove("SECURITY_CLOUD")
         if domains:
             ordered = self._ordered(domains)
             return RequiredDomainResolution(
@@ -232,9 +249,8 @@ class RequiredDomainResolver:
 
     @staticmethod
     def _is_broad_project_question(question: str) -> bool:
-        return bool(re.search(r"(?<![a-z0-9])(obligation|reglement|regle|conformit)[a-z]*(?![a-z0-9])", question)) and any(
-            _matches(question, signal) for signal in ("projet", "entreprise", "france", "respecter", "concerne")
-        )
+        asks_about_regulation = bool(re.search(r"(?<![a-z0-9])(obligation|reglement|regle|conformit)[a-z]*(?![a-z0-9])", question))
+        return asks_about_regulation and any(_matches(question, reference) for reference in _EXPLICIT_PROJECT_REFERENCES)
 
     @staticmethod
     def _ordered(values: list[str]) -> list[str]:

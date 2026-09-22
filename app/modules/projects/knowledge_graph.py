@@ -443,6 +443,7 @@ class GraphContextProvider:
         KnowledgeNodeType.SECTOR: ("secteur", "marche", "client"),
         KnowledgeNodeType.MARKET: ("marche", "client", "cible", "financement"),
         KnowledgeNodeType.GEOGRAPHY: ("pays", "france", "europe", "localisation", "geographique", "opere"),
+        KnowledgeNodeType.BUSINESS_MODEL: ("modele economique", "business model"),
         KnowledgeNodeType.REGULATORY_ASSESSMENT: ("reglement", "obligation", "conformite", "evaluation"),
         KnowledgeNodeType.REGULATORY_DOMAIN: ("reglement", "obligation", "conformite", "evaluation"),
         KnowledgeNodeType.EVIDENCE: ("reglement", "obligation", "source", "preuve", "conformite"),

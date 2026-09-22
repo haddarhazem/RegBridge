@@ -247,3 +247,36 @@ async def test_candidate_capture_failure_never_hides_a_successful_copilot_answer
     assert turn.candidate_extraction_failed is True
     assert conversations.payload["candidate_count"] == 0
     assert conversations.payload["candidate_extraction_failed"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("answer_source", "question", "answer"),
+    [
+        ("PROJECT_GRAPH", "Quel est le secteur de ce projet?", "Le secteur confirmé de votre projet est : EnergyTech."),
+        ("GENERAL_EXPLANATION", "C'est quoi un B2B?", "B2B signifie Business-to-Business."),
+    ],
+)
+async def test_non_regulatory_answer_does_not_receive_a_regulatory_verification_warning(answer_source, question, answer) -> None:
+    actor = _principal(uuid.uuid4(), "v12-graph-answer@example.test")
+    conversations = _ConversationService(uuid.uuid4())
+
+    class ProjectGraphOrchestrator:
+        async def run(self, _request):
+            result = type("Result", (), {
+                "structured_payload": {"answer_source": answer_source},
+                "answer": answer,
+                "sources": [],
+                "warnings": ["Réponse fondée sur une information confirmée du projet, et non sur une source réglementaire."],
+            })()
+            return type("Outcome", (), {"status": "succeeded", "results": [result], "failures": [], "root_run_id": None, "pipeline_active": False})()
+
+        async def complete_copilot_turn(self, *_args, **_kwargs):
+            return None
+
+    turn = await ProjectCopilotService(conversations, ProjectGraphOrchestrator()).respond(
+        actor, conversations.thread.id, question
+    )
+
+    assert turn.warnings == ["Réponse fondée sur une information confirmée du projet, et non sur une source réglementaire."]
+    assert "Certains éléments n’ont pas pu être vérifiés avec une fiabilité suffisante." not in conversations.payload["warnings"]

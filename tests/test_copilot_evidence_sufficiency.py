@@ -61,6 +61,66 @@ def test_required_domain_resolver_is_question_scoped_and_never_defaults_unknown_
     assert unknown.required_domains == [] and unknown.resolution_source == ResolutionSource.UNRESOLVED and unknown.needs_clarification
 
 
+def test_required_domain_resolver_broadens_only_explicit_project_relative_questions():
+    resolver = RequiredDomainResolver()
+    enersight = context(
+        country_code="FR",
+        activity="Plateforme SaaS B2B d'optimisation énergétique.",
+        technology="Intelligence artificielle, machine learning, SaaS cloud, compteurs IoT.",
+        data_context="Données personnelles et consommation énergétique.",
+        target_market="France",
+        location="Île-de-France, France",
+    )
+
+    generic = resolver.resolve(
+        "Quelles réglementations concernent généralement une entreprise SaaS B2B en France ?",
+        enersight,
+    )
+    assert generic.resolution_source == ResolutionSource.QUESTION_EXPLICIT
+    assert generic.required_domains == ["SECURITY_CLOUD"]
+    assert generic.matched_signals == ["question:saas"]
+
+    privacy = resolver.resolve(
+        "Une entreprise SaaS B2B qui traite des données personnelles doit-elle respecter le RGPD ?",
+        enersight,
+    )
+    assert privacy.resolution_source == ResolutionSource.QUESTION_EXPLICIT
+    assert privacy.required_domains == ["PRIVACY"]
+
+    ai = resolver.resolve(
+        "Quelles obligations de l'AI Act concernent une entreprise qui utilise de l'intelligence artificielle ?",
+        enersight,
+    )
+    assert ai.resolution_source == ResolutionSource.QUESTION_EXPLICIT
+    assert ai.required_domains == ["AI"]
+
+    for question in (
+        "Quelles obligations réglementaires concernent ce projet ?",
+        "Quelles obligations réglementaires concernent mon projet ?",
+        "Quelles obligations réglementaires s'appliquent dans mon cas ?",
+    ):
+        explicit_project = resolver.resolve(question, enersight)
+        assert explicit_project.resolution_source == ResolutionSource.PROJECT_CONTEXT_BROAD_QUESTION
+        assert explicit_project.required_domains == [
+            "GENERAL_BUSINESS", "PRIVACY", "AI", "SECURITY_CLOUD", "ENERGY_IOT",
+        ]
+
+
+@pytest.mark.parametrize("subject", ("entreprise", "France", "SaaS B2B", "startup"))
+def test_generic_business_words_never_trigger_project_context_enrichment(subject: str):
+    resolver = RequiredDomainResolver()
+    project = context(
+        country_code="FR",
+        technology="AI, SaaS cloud et IoT énergétique",
+        data_context="Données personnelles",
+    )
+
+    result = resolver.resolve(f"Quelles obligations réglementaires concernent une {subject} ?", project)
+
+    assert result.resolution_source != ResolutionSource.PROJECT_CONTEXT_BROAD_QUESTION
+    assert not any(signal.startswith("context:") for signal in result.matched_signals)
+
+
 def test_evidence_sufficiency_requires_resolved_domains_and_substantive_evidence():
     resolver, evaluator = RequiredDomainResolver(), EvidenceSufficiencyEvaluator()
     broad_context = context(data_context="Données personnelles", technology="AI/ML et cloud")
@@ -248,7 +308,7 @@ def request(question: str) -> AgentRequest:
 def broad_request() -> AgentRequest:
     return AgentRequest(
         request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), capability="regulatory", locale="fr",
-        question="Quelles sont les principales obligations reglementaires pour une entreprise en France ?",
+        question="Quelles sont les principales obligations reglementaires pour ce projet en France ?",
         authorized_context=context(
             country_code="FR", data_context="Données personnelles de clients",
             technology="AI/ML",

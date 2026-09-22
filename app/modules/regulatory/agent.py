@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.modules.ai.agents import Agent
 from app.modules.ai.contracts import AgentRequest, AgentResult
+from app.modules.ai.general_explanations import GeneralExplanationResolver
 from app.modules.ai.context import requests_assessment_context, requests_document_context, requests_roadmap_context
 from app.modules.ai.llm import (
     LLMGenerationRequest,
@@ -101,6 +102,21 @@ class RegulatoryAgent(Agent):
             return self._context_only_result("Aucune roadmap n’a encore été générée pour ce projet.", "roadmap_unavailable")
         if requests_document_context(request.question) and request.authorized_context.document is None and request.authorized_context.contract_analysis is None:
             return self._context_only_result("Sélectionnez un document ou ouvrez une analyse pour poser une question sur ce document.", "document_context_unavailable")
+        general_explanation = GeneralExplanationResolver().resolve(request.question)
+        if general_explanation is not None:
+            return AgentResult(
+                agent_name=self.name,
+                capability=request.capability,
+                status="succeeded",
+                answer=general_explanation.answer,
+                structured_payload={
+                    "answer_source": "GENERAL_EXPLANATION",
+                    "explanation_term": general_explanation.term,
+                    "generation_skipped": True,
+                    "regulatory_retrieval_skipped": True,
+                    **_graph_context_payload(request),
+                },
+            )
         resolution = self.resolver.resolve(request.question, request.authorized_context)
         scope = self.scope_resolver.resolve(request.question)
         if resolution.needs_clarification:
@@ -524,18 +540,37 @@ def _trusted_project_fact_result(request: AgentRequest) -> AgentResult | None:
         if not unicodedata.combining(character)
     )
     normalized = re.sub(r"\s+", " ", normalized)
+    asks_business_model = any(term in normalized for term in ("modele economique", "business model"))
     asks_project = any(term in normalized for term in (
         "mon projet", "my project", "notre projet", "our project", "ce projet", "this project",
-    )) or any(
-        term in normalized for term in ("marche cible", "target market")
-    )
+    )) or asks_business_model
     asks_regulatory = any(term in normalized for term in ("obligation", "reglement", "conformite"))
     if not asks_project or asks_regulatory:
         return None
+    membership_answer = _trusted_project_label_membership_answer(graph, normalized)
+    if membership_answer is not None:
+        return AgentResult(
+            agent_name="regulatory-agent",
+            capability=request.capability,
+            status="succeeded",
+            answer=membership_answer,
+            warnings=["Réponse fondée sur une information confirmée du projet, et non sur une source réglementaire."],
+            structured_payload={
+                "answer_source": "PROJECT_GRAPH",
+                "generation_skipped": True,
+                "regulatory_retrieval_skipped": True,
+                **_graph_context_payload(request),
+            },
+        )
     relation: KnowledgeRelation | None = None
     node_type: KnowledgeNodeType | None = None
     response_prefix = ""
-    if any(term in normalized for term in ("fournisseur", "provider", "hebergeur")):
+    missing_answer = ""
+    if asks_business_model:
+        relation, node_type = KnowledgeRelation.HAS_BUSINESS_MODEL, KnowledgeNodeType.BUSINESS_MODEL
+        response_prefix = "Le modèle économique de votre projet est"
+        missing_answer = "Le modèle économique n’est pas encore renseigné dans les informations confirmées de votre projet."
+    elif any(term in normalized for term in ("fournisseur", "provider", "hebergeur")):
         relation, node_type = KnowledgeRelation.USES_PROVIDER, KnowledgeNodeType.PROVIDER
         response_prefix = "Votre projet utilise"
     elif "secteur" in normalized:
@@ -559,16 +594,19 @@ def _trusted_project_fact_result(request: AgentRequest) -> AgentResult | None:
         and nodes[edge.target].type == node_type
     ]
     if not matching_nodes:
-        return None
-    labels = list(dict.fromkeys(node.label for node in matching_nodes))
-    if relation == KnowledgeRelation.USES_PROVIDER:
-        answer = (
-            f"{response_prefix} {labels[0]} comme fournisseur d’hébergement."
-            if len(labels) == 1
-            else f"Votre projet indique utiliser les fournisseurs suivants : {', '.join(labels)}."
-        )
+        if not missing_answer:
+            return None
+        answer = missing_answer
     else:
-        answer = f"{response_prefix} : {', '.join(labels)}."
+        labels = list(dict.fromkeys(node.label for node in matching_nodes))
+        if relation == KnowledgeRelation.USES_PROVIDER:
+            answer = (
+                f"{response_prefix} {labels[0]} comme fournisseur d’hébergement."
+                if len(labels) == 1
+                else f"Votre projet indique utiliser les fournisseurs suivants : {', '.join(labels)}."
+            )
+        else:
+            answer = f"{response_prefix} : {', '.join(labels)}."
     return AgentResult(
         agent_name="regulatory-agent",
         capability=request.capability,
@@ -582,6 +620,39 @@ def _trusted_project_fact_result(request: AgentRequest) -> AgentResult | None:
             **_graph_context_payload(request),
         },
     )
+
+
+def _trusted_project_label_membership_answer(graph, normalized: str) -> str | None:
+    """Answer a narrow membership check from an exact confirmed graph label.
+
+    This is a text comparison against already-confirmed values, never an
+    inference that B2B wording creates a business model or a project fact.
+    """
+    comparison_text = re.sub(r"[^a-z0-9]+", " ", normalized)
+    if not any(signal in comparison_text for signal in ("est il", "contient il", "is it", "does it contain")):
+        return None
+    ignored = {
+        "ce", "projet", "est", "il", "le", "la", "les", "de", "du", "des", "un", "une",
+        "secteur", "contient", "dans", "is", "it", "does", "contain", "the", "project",
+    }
+    question_terms = {term for term in re.findall(r"[a-z0-9]+", comparison_text) if term not in ignored and len(term) >= 2}
+    if not question_terms:
+        return None
+    nodes = {node.id: node for node in graph.nodes}
+    for edge in graph.edges:
+        if edge.relation not in {KnowledgeRelation.HAS_SECTOR, KnowledgeRelation.HAS_BUSINESS_MODEL, KnowledgeRelation.TARGETS_MARKET}:
+            continue
+        node = nodes.get(edge.target)
+        if node is None:
+            continue
+        label_terms = set(re.findall(r"[a-z0-9]+", "".join(
+            character for character in unicodedata.normalize("NFKD", node.label.casefold()) if not unicodedata.combining(character)
+        )))
+        matched = question_terms & label_terms
+        if matched:
+            term = sorted(matched, key=lambda item: (-len(item), item))[0].upper() if matched == {"b2b"} else sorted(matched, key=lambda item: (-len(item), item))[0]
+            return f"Oui. L’information confirmée « {node.label} » contient bien « {term} »."
+    return None
 
 
 def _context_text(request: AgentRequest) -> str:
