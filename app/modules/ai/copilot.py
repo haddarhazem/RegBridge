@@ -14,6 +14,23 @@ from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.modules.projects.service import ProjectService
 
 
+def _copilot_intent(content: str, *, document_id: uuid.UUID | None, analysis_id: uuid.UUID | None) -> str:
+    """Keep contract questions within their selected document-analysis scope.
+
+    A compliance question about an analysed contract is deliberately routed to
+    the Contract Agent for a qualified response rather than executing two
+    unrelated agents and accidentally publishing only one of their answers.
+    """
+    normalized = content.casefold()
+    regulatory_markers = ("rgpd", "ai act", "réglementation", "reglementation", "cnil", "obligation légale", "obligation legale")
+    contract_markers = ("contrat", "clause", "résiliation", "resiliation", "confidential", "propriété intellectuelle", "propriete intellectuelle", "responsabilité", "responsabilite", "pénalité", "penalite", "non-concurrence", "non concurrence", "signer")
+    if analysis_id is not None or document_id is not None or any(marker in normalized for marker in contract_markers):
+        return "contract"
+    if any(marker in normalized for marker in regulatory_markers):
+        return "regulatory"
+    return "regulatory"
+
+
 @dataclass(frozen=True)
 class CopilotTurn:
     user_message: object
@@ -76,7 +93,7 @@ class ProjectCopilotService:
             context_document_id=document_id,
             context_version_id=document_version_id,
             context_analysis_id=analysis_id,
-            intent_hint="regulatory",
+            intent_hint=_copilot_intent(content, document_id=document_id, analysis_id=analysis_id),
             locale="fr",
         )
         outcome = await self.orchestrator.run(orchestration_request)
@@ -105,6 +122,11 @@ class ProjectCopilotService:
                     references.append("Analyse contractuelle")
         elif outcome.failures and outcome.failures[0].error_code == "insufficient_evidence":
             answer = "Les sources réglementaires disponibles sont insuffisantes pour répondre de manière fiable."
+        elif outcome.failures and outcome.failures[0].error_code == "contract_analysis_unavailable":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Une analyse contractuelle termin\u00e9e est requise avant de questionner ce contrat.",
+            )
         elif outcome.failures and outcome.failures[0].structured_payload.get("provider_http_status") == 429:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,

@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.modules.identity.dependencies import get_authenticated_principal
 from app.modules.identity.schemas import AuthenticatedPrincipal
 from app.core.request_id import get_request_id
-from app.modules.regulatory.orchestration import build_regulatory_orchestrator
+from app.modules.regulatory.orchestration import build_contract_orchestrator, build_regulatory_orchestrator
 from app.modules.regulatory.retrieval import RegulatoryConfigurationError, RegulatoryRetrievalError
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -76,8 +76,11 @@ async def add_message(thread_id: uuid.UUID, data: MessageCreate, principal: Prin
 @router.post("/{thread_id}/responses", response_model=CopilotTurnResponse, status_code=status.HTTP_201_CREATED)
 async def create_copilot_response(request: Request, thread_id: uuid.UUID, data: MessageCreate, principal: Principal, session: Session) -> CopilotTurnResponse:
     try:
-        # Cold BGE initialization is synchronous; it must not block the ASGI loop.
-        orchestrator = await run_in_threadpool(build_regulatory_orchestrator, session)
+        # A selected document always routes to the local Contract Agent. Do not
+        # cold-start BGE, Qdrant, or an LLM provider for an analysis-backed
+        # contract question that cannot use those capabilities.
+        builder = build_contract_orchestrator if data.document_id is not None else build_regulatory_orchestrator
+        orchestrator = await run_in_threadpool(builder, session)
     except (RegulatoryConfigurationError, RegulatoryRetrievalError, LLMConfigurationError):
         raise HTTPException(status_code=503, detail="Copilot is not configured") from None
     turn = await ProjectCopilotService(ConversationService(session), orchestrator).respond(

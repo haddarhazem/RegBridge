@@ -4,6 +4,7 @@ import pytest
 from docx import Document as DocxDocument
 from fpdf import FPDF
 
+from app.modules.documents.contract_analysis_service import ContractAnalysisService
 from app.modules.documents.extraction import ExtractionError, extract_native
 from app.modules.documents.ocr import MistralOcrProvider
 
@@ -62,6 +63,23 @@ def test_image_only_pdf_requires_opt_in_ocr(tmp_path):
     assert error.value.category == "OCR_REQUIRED"
 
 
+def test_mixed_pdf_retains_native_page_and_marks_only_unusable_page_for_ocr(tmp_path):
+    source = tmp_path / "mixed.pdf"
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=12)
+    pdf.multi_cell(0, 10, "This native page has enough selectable contract text to remain locally extracted.")
+    pdf.add_page()
+    pdf.output(str(source))
+
+    result = extract_native(source, ".pdf", min_pdf_chars=16)
+
+    assert result.method == "native"
+    assert result.pages[0].startswith("This native page")
+    assert result.ocr_required_pages == (2,)
+    assert result.page_methods == ("NATIVE", "OCR_REQUIRED")
+
+
 @pytest.mark.asyncio
 async def test_mistral_ocr_uploads_exact_bytes_and_deletes_provider_file():
     calls = []
@@ -93,3 +111,44 @@ async def test_mistral_ocr_uploads_exact_bytes_and_deletes_provider_file():
     assert calls[0][1]["file"].content == b"private-pdf-bytes"
     assert calls[1][1]["document"].file_id == "provider-file-id"
     assert calls[2][1] == {"file_id": "provider-file-id", "timeout_ms": None}
+
+
+@pytest.mark.asyncio
+async def test_mistral_ocr_invalid_response_is_categorized_and_provider_file_is_removed():
+    calls = []
+
+    class Files:
+        async def upload_async(self, **_kwargs):
+            return SimpleNamespace(id="provider-file-id")
+
+        async def delete_async(self, **kwargs):
+            calls.append(kwargs)
+
+    class OCR:
+        async def process_async(self, **_kwargs):
+            return SimpleNamespace(model="mistral-ocr-test", pages=[])
+
+    provider = MistralOcrProvider(
+        api_key="test-only-key",
+        model="mistral-ocr-test",
+        client=SimpleNamespace(files=Files(), ocr=OCR()),
+    )
+
+    with pytest.raises(ExtractionError) as error:
+        await provider.extract(b"private-pdf-bytes", "scan.pdf", "application/pdf")
+
+    assert error.value.category == "OCR_INVALID_RESPONSE"
+    assert calls == [{"file_id": "provider-file-id", "timeout_ms": None}]
+
+
+def test_contract_analysis_source_method_uses_page_level_mixed_provenance():
+    version = SimpleNamespace(
+        extraction_metadata={
+            "extraction": {
+                "method": "hybrid_native_ocr",
+                "page_methods": ["NATIVE", "OCR"],
+            }
+        }
+    )
+
+    assert ContractAnalysisService._source_method(version) == "MIXED"

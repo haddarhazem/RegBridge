@@ -676,13 +676,23 @@
     if (name === 'open-version') return navigate('documents', { document: target.dataset.documentId, version: target.dataset.versionId });
     if (name === 'download-version') return downloadVersion(target.dataset.documentId, target.dataset.versionId);
     if (name === 'retry-extraction') return retryExtraction(target);
-    if (name === 'copilot-document') {
-      state.copilot.context = { documentId: target.dataset.documentId, versionId: target.dataset.versionId, analysisId: null };
-      return openCopilot();
-    }
+    if (name === 'copilot-document') return analyzeDocumentContract(target);
     if (name === 'copilot-analysis') {
       state.copilot.context = { documentId: target.dataset.documentId, versionId: target.dataset.versionId, analysisId: target.dataset.analysisId };
       return openCopilot();
+    }
+    if (name === 'open-contract-analysis') return navigate('contracts', { document: target.dataset.documentId, version: target.dataset.versionId, analysis: target.dataset.analysisId });
+    if (name === 'focus-contract-clause') {
+      const detail = document.querySelector(`#contract-clause-${CSS.escape(target.dataset.clauseId)}`);
+      if (detail) { detail.open = true; detail.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); detail.focus({ preventScroll: true }); }
+      return;
+    }
+    if (name === 'filter-contract-clauses') {
+      const filter = target.dataset.filter || 'all';
+      const matches = (item) => filter === 'all' || (filter === 'priority' && ['high', 'critical'].includes(item.dataset.clauseRisk)) || (filter === 'medium' && item.dataset.clauseRisk === 'medium') || (filter === 'missing' && item.dataset.clauseStatus === 'MISSING') || (filter === 'contradictions' && item.dataset.clauseStatus === 'CONTRADICTORY');
+      document.querySelectorAll('[data-action="filter-contract-clauses"]').forEach((item) => item.classList.toggle('active', item === target));
+      document.querySelectorAll('[data-contract-clause], .contract-clause-navigation button[data-clause-status]').forEach((item) => { item.hidden = !matches(item); });
+      return;
     }
     if (name === 'document-contracts') return navigate('contracts', { document: target.dataset.documentId });
     if (name === 'analyze-contract') return analyzeContract(target);
@@ -690,7 +700,7 @@
 
   async function perform(button, label, call, done) {
     setBusy(button, true, label);
-    try { await call(); await done(); }
+    try { const result = await call(); await done(result); }
     catch (error) {
       setBusy(button, false);
       showToast(errorMessage(error));
@@ -804,7 +814,14 @@
     const select = document.querySelector('[data-contract-document]');
     if (!select?.value) { select?.focus(); return; }
     const [documentId, versionId] = select.value.split('|');
-    await perform(button, 'Analyse…', () => api.analyzeContract(documentId, versionId), loadRoute);
+    await perform(button, 'Analyse…', () => api.analyzeContract(documentId, versionId), (analysis) => navigate('contracts', { document: documentId, version: versionId, analysis: analysis.id }));
+  }
+
+  async function analyzeDocumentContract(button) {
+    const documentId = button.dataset.documentId;
+    const versionId = button.dataset.versionId;
+    if (!documentId || !versionId) return;
+    await perform(button, 'Analyse…', () => api.analyzeContract(documentId, versionId), (analysis) => navigate('contracts', { document: documentId, version: versionId, analysis: analysis.id }));
   }
 
   function scheduleDocumentPolling() {

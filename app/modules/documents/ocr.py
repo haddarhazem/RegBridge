@@ -53,7 +53,15 @@ class MistralOcrProvider:
             text = "\n\n".join(f"PAGE {index}\n{page}" for index, page in enumerate(pages, 1) if page).strip()
             if not text:
                 raise OcrFailure("OCR_INVALID_RESPONSE", "Mistral OCR returned no usable text")
-            result = ExtractionResult(text, tuple(pages), "mistral_ocr", "mistral-ocr-v1", "mistral", str(getattr(response, "model", self.model)))
+            result = ExtractionResult(
+                text,
+                tuple(pages),
+                "mistral_ocr",
+                "mistral-ocr-v2",
+                "mistral",
+                str(getattr(response, "model", self.model)),
+                page_methods=tuple("OCR" for _ in pages),
+            )
             return result
         except OcrFailure:
             raise
@@ -68,7 +76,7 @@ class MistralOcrProvider:
                 try:
                     await self._client.files.delete_async(file_id=uploaded_id, timeout_ms=self.timeout_ms)
                 except Exception as cleanup_error:
-                    emit_event("document.ocr.cleanup_failed", component="document_extraction", file_id=uploaded_id, error_category=type(cleanup_error).__name__)
+                    emit_event("document.ocr.cleanup_failed", component="document_extraction", error_category=type(cleanup_error).__name__)
                     if result is None:
                         # The original processing error remains the meaningful failure.
                         pass

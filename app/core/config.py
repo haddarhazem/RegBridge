@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     regulatory_verification_max_tokens: int = Field(default=900, ge=1, le=4000, alias="REGULATORY_VERIFICATION_MAX_TOKENS")
     authoritative_source_fallback_enabled: bool = Field(default=False, alias="AUTHORITATIVE_SOURCE_FALLBACK_ENABLED")
     document_external_processing_enabled: bool = Field(default=False, alias="DOCUMENT_EXTERNAL_PROCESSING_ENABLED")
+    contract_external_semantic_analysis_enabled: bool = Field(default=False, alias="CONTRACT_EXTERNAL_SEMANTIC_ANALYSIS_ENABLED")
     document_native_text_min_chars: int = Field(default=32, alias="DOCUMENT_NATIVE_TEXT_MIN_CHARS", ge=1)
     document_extraction_stale_after_seconds: int = Field(default=900, alias="DOCUMENT_EXTRACTION_STALE_AFTER_SECONDS", gt=0)
     document_extraction_max_attempts: int = Field(default=3, alias="DOCUMENT_EXTRACTION_MAX_ATTEMPTS", ge=1, le=10)

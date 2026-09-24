@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.modules.documents.schemas import Classification, DocumentResponse, DocumentUploadResponse, DocumentVersionResponse, DocumentVisibility, ProcessingJobCreate, ProcessingJobResponse
-from app.modules.documents.contract_analysis_schemas import ContractAnalysisResponse, ContractFindingResponse, ContractObservationResponse
+from app.modules.documents.contract_analysis_schemas import ContractAnalysisResponse, ContractClauseResponse, ContractEvidenceResponse, ContractPartyResponse
 from app.modules.documents.contract_analysis_service import ContractAnalysisService
+from app.modules.documents.contract_risk import calculate_contract_risk_index
 from app.modules.documents.models import DocumentProcessingJob
 from app.modules.documents.service import DocumentService
 from app.modules.documents.extraction import extraction_status
@@ -59,23 +60,63 @@ def version_response(version) -> DocumentVersionResponse:
 
 
 def analysis_response(analysis) -> ContractAnalysisResponse:
+    metadata = analysis.missing_context[0] if isinstance(analysis.missing_context, list) and analysis.missing_context and isinstance(analysis.missing_context[0], dict) else {}
+    status = analysis.verification_status if analysis.verification_status in {"running", "completed", "partial", "failed"} else "failed"
+    clauses = [clause_response(item) for item in getattr(analysis, "clauses", [])]
     return ContractAnalysisResponse(
         id=analysis.id,
         project_id=analysis.project_id,
-        document_id=analysis.document_id,
+        document_id=analysis._response_document_id,
         document_version_id=analysis.document_version_id,
-        strategy=analysis.strategy,
-        status=analysis.status,
-        provider=analysis.provider,
-        model=analysis.model,
-        error_code=analysis.error_code,
+        analysis_version=analysis.analysis_version,
+        contract_type=analysis.contract_type,
+        parties=metadata.get("parties", []),
+        party_details=[ContractPartyResponse.model_validate(item) for item in metadata.get("party_details", []) if isinstance(item, dict)],
+        effective_dates=metadata.get("effective_dates", []),
+        overall_risk_level=analysis.overall_risk_level or "unknown",
+        summary=analysis.summary,
+        recommendations=analysis.recommendations if isinstance(analysis.recommendations, list) else [],
+        missing_context=metadata.get("missing_context", analysis.missing_context if isinstance(analysis.missing_context, list) else []),
+        status=status,
+        error_code="contract_analysis_failed" if status == "failed" else None,
         created_at=analysis.created_at,
-        findings=[],
-        observations=[ContractObservationResponse(id=finding.id, observation_index=finding.finding_index, suggested_category=finding.category, source_quote=finding.evidence_quote, document_version_id=finding.evidence_document_version_id, start_char=finding.evidence_start_char, end_char=finding.evidence_end_char) for finding in getattr(analysis, "findings", [])],
-        risks=[],
-        recommendations=[],
-        semantic_interpretation_available=False,
-        limitations=["Automated semantic risk and recommendation interpretation is not included because it could not be verified reliably."],
+        clauses=clauses,
+        risk_index=calculate_contract_risk_index(clauses),
+    )
+
+
+def clause_response(clause) -> ContractClauseResponse:
+    refs = clause.source_refs if isinstance(clause.source_refs, dict) else {}
+    detail = refs.get("analysis") if isinstance(refs.get("analysis"), dict) else {}
+    evidence = refs.get("evidence") if isinstance(refs.get("evidence"), list) else []
+    risk = clause.risk_level if clause.risk_level in {"low", "medium", "high", "critical", "informational", "unknown"} else "unknown"
+    state = detail.get("status") if detail.get("status") in {"FOUND", "MISSING", "AMBIGUOUS", "CONTRADICTORY", "OTHER", "NOT_APPLICABLE"} else "FOUND"
+    return ContractClauseResponse(
+        id=clause.id,
+        clause_order=clause.clause_order,
+        clause_type=clause.clause_type,
+        title=detail.get("title") or clause.heading or clause.clause_type or "Clause analysée",
+        status=state,
+        source_text=clause.extracted_text,
+        source_location=detail.get("source_location"),
+        evidence=[ContractEvidenceResponse.model_validate(item) for item in evidence],
+        verification_status=detail.get("verification_status") if detail.get("verification_status") in {"VERIFIED", "PARTIALLY_VERIFIED", "UNVERIFIED"} else "UNVERIFIED",
+        source_method=detail.get("source_method") if detail.get("source_method") in {"NATIVE", "OCR", "MIXED"} else "NATIVE",
+        plain_language_summary=detail.get("plain_language_summary") or clause.finding or "Une disposition a été détectée dans le texte extrait.",
+        purpose=detail.get("purpose") or "Le rôle habituel de cette disposition doit être examiné dans le contexte du contrat.",
+        what_the_clause_requires=detail.get("what_the_clause_requires"),
+        affected_party=detail.get("affected_party"),
+        risk_level=risk,
+        issues=detail.get("issues", []),
+        why_it_matters=detail.get("why_it_matters"),
+        ambiguities=detail.get("ambiguities", []),
+        missing_elements=detail.get("missing_elements", []),
+        potential_consequences=detail.get("potential_consequences", []),
+        recommendation=clause.recommendation,
+        suggested_revision=detail.get("suggested_revision"),
+        related_clauses=detail.get("related_clauses", []),
+        confidence=float(clause.confidence) if clause.confidence is not None else None,
+        limitations=detail.get("limitations", []),
     )
 
 

@@ -27,6 +27,8 @@ class ExtractionResult:
     extractor_version: str
     provider: str | None = None
     model: str | None = None
+    page_methods: tuple[str, ...] = ()
+    ocr_required_pages: tuple[int, ...] = ()
 
     @property
     def text_sha256(self) -> str:
@@ -42,6 +44,21 @@ def normalize_text(value: str) -> str:
 def page_text(pages: list[str] | tuple[str, ...]) -> str:
     normalized_pages = [normalize_text(page) for page in pages]
     return "\n\n".join(f"PAGE {index}\n{page}" for index, page in enumerate(normalized_pages, 1) if page).strip()
+
+
+def pdf_ocr_required_pages(pages: list[str] | tuple[str, ...], *, min_pdf_chars: int) -> tuple[int, ...]:
+    """Return only clearly unusable pages; images alone are not enough.
+
+    The threshold is deliberately lower than the whole-document threshold so a
+    short but legible page is retained natively. An entirely unreadable PDF is
+    still represented by ``OCR_REQUIRED`` in ``extract_native``.
+    """
+
+    per_page_minimum = max(8, min_pdf_chars // 4)
+    return tuple(
+        index for index, page in enumerate(pages, 1)
+        if len(re.sub(r"\s+", "", normalize_text(page))) < per_page_minimum
+    )
 
 
 def extraction_status(version) -> str:
@@ -62,13 +79,13 @@ def extract_native(path: Path, extension: str, *, min_pdf_chars: int | None = No
             raise ExtractionError("NATIVE_EXTRACTION_FAILED", "TXT is not valid UTF-8") from exc
         if not text:
             raise ExtractionError("EMPTY_EXTRACTION", "TXT contains no usable text")
-        return ExtractionResult(text, (text,), "native", "native-text-v1")
+        return ExtractionResult(text, (text,), "native", "native-text-v1", page_methods=("NATIVE",))
 
     if extension == ".docx":
         text = _extract_docx(path)
         if not text:
             raise ExtractionError("OCR_REQUIRED", "DOCX has no sufficient native text")
-        return ExtractionResult(text, (text,), "native", "native-docx-v1")
+        return ExtractionResult(text, (text,), "native", "native-docx-v1", page_methods=("NATIVE",))
 
     if extension == ".pdf":
         try:
@@ -78,7 +95,15 @@ def extract_native(path: Path, extension: str, *, min_pdf_chars: int | None = No
         text = page_text(pages)
         threshold = min_pdf_chars if min_pdf_chars is not None else get_settings().document_native_text_min_chars
         if len(re.sub(r"\s+", "", text)) >= threshold:
-            return ExtractionResult(text, tuple(pages), "native", "native-pdf-v1")
+            required = pdf_ocr_required_pages(pages, min_pdf_chars=threshold)
+            return ExtractionResult(
+                text,
+                tuple(pages),
+                "native",
+                "native-pdf-v2",
+                page_methods=tuple("OCR_REQUIRED" if index in required else "NATIVE" for index in range(1, len(pages) + 1)),
+                ocr_required_pages=required,
+            )
         raise ExtractionError("OCR_REQUIRED", "PDF has no sufficient native text")
 
     raise ExtractionError("UNSUPPORTED_FORMAT", "Unsupported document format")

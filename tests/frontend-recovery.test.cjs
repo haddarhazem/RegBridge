@@ -117,7 +117,7 @@ test('regulatory history, uncertainty and source URLs remain escaped and version
   assert.match(html,/ne peut pas enrichir la roadmap/);
 });
 
-test('contracts show only completed same-version observations, never semantic advice', () => {
+test('historical contract observations remain limited to completed same-version evidence', () => {
   const views=load('frontend/entrepreneur/views.js').RegBridgeEntrepreneurViews;
   assert.match(views.contracts({documents:[]}),/Aucun contrat analysé/);
   const entry={document:{id:'d',title:'Synthetic contract'},versions:[{id:'v',version_number:3,malware_scan_status:'clean',extraction_status:'ready'}],analyses:[{id:'a',status:'completed',document_version_id:'v',observations:[{document_version_id:'v',source_quote:'Exact synthetic excerpt',suggested_category:'duration',observation_index:0,start_char:0,end_char:23},{document_version_id:'wrong',source_quote:'WRONG VERSION',start_char:0,end_char:13}],recommendations:[{statement:'UNSAFE advice'}]}]};
@@ -134,4 +134,44 @@ test('contracts show only completed same-version observations, never semantic ad
   assert.match(html,/Extraction échouée/);
   assert.match(html,/version sélectionnée ne correspond pas/);
   assert.doesNotMatch(html,/data-action="analyze-contract"/);
+});
+
+test('ready documents expose the explicit analysis action and completed analyses retain contract context', () => {
+  const views = load('frontend/entrepreneur/views.js').RegBridgeEntrepreneurViews;
+  const entry = {
+    document: {id:'document-1', title:'Synthetic ready contract', document_type:'pdf', classification:'confidential', visibility:'private', processing_status:'ready', current_version_id:'version-1'},
+    versions: [{id:'version-1', version_number:1, original_filename:'contract.pdf', mime_type:'application/pdf', size_bytes:512, malware_scan_status:'clean', extraction_status:'ready', created_at:'2026-09-23T00:00:00Z'}],
+    analyses: [],
+  };
+  let html = views.documents({documents:[entry], selectedDocumentId:'document-1', selectedVersionId:'version-1'});
+  assert.match(html, /DOCUMENTS/);
+  assert.match(html, /ANALYSES DE CONTRATS/);
+  assert.match(html, /Analyser le contrat/);
+  assert.match(html, /Document prêt à analyser/);
+  assert.match(html, /data-action="copilot-document"/);
+
+  entry.analyses.push({id:'analysis-1', document_version_id:'version-1', status:'completed'});
+  html = views.documents({documents:[entry], selectedDocumentId:'document-1', selectedVersionId:'version-1'});
+  assert.match(html, /Analyse terminée/);
+  assert.match(html, /Voir l’analyse du contrat/);
+  assert.match(html, /Questionner le Contract Agent/);
+  assert.match(html, /data-analysis-id="analysis-1"/);
+  assert.doesNotMatch(html, /Questionner le Copilot/);
+});
+
+test('contract analysis renders the explainable risk index rather than a legal-validity score', () => {
+  const views = load('frontend/entrepreneur/views.js').RegBridgeEntrepreneurViews;
+  const clause = {id:'clause-1', clause_type:'liability', title:'Liability', status:'AMBIGUOUS', risk_level:'high', source_text:'Exact source wording.', source_location:'Section 5', plain_language_summary:'No cap is identified.', purpose:'Allocates liability.', issues:['No cap detected.'], ambiguities:[], missing_elements:[], potential_consequences:[], limitations:[]};
+  const analysis = {id:'analysis-1', analysis_version:1, status:'completed', document_version_id:'version-1', created_at:'2026-09-23T00:00:00Z', clauses:[clause], missing_context:[], risk_index:{name:'Indice de risque contractuel', score:8, range_max:100, formula:'Synthetic deterministic formula.', contributors:['Liability: high (+4)'], limitation:'Review aid; not legal advice.'}};
+  const html = views.contracts({documents:[{document:{id:'document-1',title:'Synthetic contract'},versions:[{id:'version-1',version_number:1,malware_scan_status:'clean',extraction_status:'ready'}],analyses:[analysis]}]});
+  for (const expected of ['Indice de risque contractuel', '8 / 100', 'Contributeurs du score', 'Liability: high', 'Synthetic deterministic formula.']) assert.match(html, new RegExp(expected));
+  assert.doesNotMatch(html, /legal-validity|safe-to-sign|compliance score/i);
+});
+
+test('contract detail provides summary, source evidence, explanation, recommendation and filters', () => {
+  const views=load('frontend/entrepreneur/views.js').RegBridgeEntrepreneurViews;
+  const clause={id:'clause-1',clause_type:'liability',title:'Liability',status:'AMBIGUOUS',risk_level:'high',source_text:'Exact source wording.',source_location:'Section 5',plain_language_summary:'No cap is identified.',purpose:'Allocates liability.',affected_party:'Provider',issues:['No cap detected.'],why_it_matters:'Exposure may be material.',ambiguities:[],missing_elements:[],potential_consequences:['Costs may be uncapped.'],recommendation:'Review a cap.',suggested_revision:'Proposition de reformulation: include a cap.',limitations:[]};
+  const analysis={id:'a',analysis_version:1,status:'completed',document_version_id:'v',contract_type:'Services',created_at:'2026-09-23T00:00:00Z',summary:'One priority review.',clauses:[clause],recommendations:['Review a cap.'],missing_context:[]};
+  const html=views.contracts({documents:[{document:{id:'d',title:'Synthetic contract'},versions:[{id:'v',version_number:1,malware_scan_status:'clean',extraction_status:'ready'}],analyses:[analysis]}]});
+  for (const expected of ['CLAUSES ANALYSÉES','Exact source wording.','No cap is identified.','Exposure may be material.','Review a cap.','Proposition de reformulation','filter-contract-clauses','copilot-analysis']) assert.match(html,new RegExp(expected));
 });

@@ -1,5 +1,6 @@
 """Product UX with real local OIDC/project persistence and controlled AI latency."""
 import asyncio
+import os
 import re
 import uuid
 
@@ -130,7 +131,7 @@ async def test_versioned_assessment_roadmap_and_contract_reading(browser_page, s
     from app.modules.projects.models import Project
     from app.modules.regulatory.assessment_models import AssessmentInputSnapshot, RegulatoryAssessment
     from app.modules.documents.models import Document, DocumentVersion
-    from app.modules.documents.contract_analysis_models import ContractAnalysis, ContractFinding
+    from app.modules.documents.contract_analysis_models import ContractAnalysis, ContractClause
 
     page=browser_page
     errors=[]
@@ -159,10 +160,10 @@ async def test_versioned_assessment_roadmap_and_contract_reading(browser_page, s
             session.add(version)
             await session.flush()
             document.current_version_id=version.id
-            analysis=ContractAnalysis(project_id=project_id,document_id=document.id,document_version_id=version.id,strategy='v2_structured_evidence',prompt_version='synthetic-ui-fixture',status='completed',created_by_user_id=project.owner_user_id)
+            analysis=ContractAnalysis(project_id=project_id,document_version_id=version.id,analysis_version=1,overall_risk_level='medium',summary='Synthetic contract analysis.',recommendations=['Review the source evidence.'],missing_context=[],verification_status='completed')
             session.add(analysis)
             await session.flush()
-            session.add(ContractFinding(analysis_id=analysis.id,finding_index=0,finding_type='FINDING',category='duration',statement='Synthetic extraction',evidence_document_version_id=version.id,evidence_quote=quote,evidence_start_char=0,evidence_end_char=len(quote)))
+            session.add(ContractClause(contract_analysis_id=analysis.id,clause_order=1,clause_type='duration',heading='Duration',extracted_text=quote,risk_level='medium',finding='Synthetic extraction',recommendation='Review the duration.',source_refs={'evidence':[{'document_version_id':str(version.id),'quote':quote,'start_char':0,'end_char':len(quote),'locator':'Synthetic source'}],'analysis':{'title':'Duration','status':'AMBIGUOUS','plain_language_summary':'Synthetic explanation.','purpose':'Synthetic purpose.','issues':['Synthetic extraction'],'limitations':[]}}))
             await session.commit()
         await page.goto(f'/entrepreneur/?view=regulatory&project={project_id}')
         await expect(page.locator('[data-workspace]')).to_contain_text('Synthetic assessment version 2')
@@ -185,10 +186,176 @@ async def test_versioned_assessment_roadmap_and_contract_reading(browser_page, s
         await page.locator('[data-action="select-roadmap"][data-version="1"]').click()
         await expect(page.locator('.roadmap-progress')).to_contain_text('1 / 11')
         await page.locator('[data-nav-view="contracts"]').click()
-        await expect(page.locator('.analysis-card')).to_contain_text(quote)
-        await expect(page.locator('.analysis-card')).to_contain_text('v1')
-        await expect(page.locator('.analysis-card')).not_to_contain_text(str(version.id))
+        await expect(page.locator('.contract-analysis')).to_contain_text(quote)
+        await expect(page.locator('.contract-analysis')).to_contain_text('VERSION 1')
+        await expect(page.locator('.contract-analysis')).not_to_contain_text(str(version.id))
+        await page.locator('.contract-clause-detail summary').click()
+        await expect(page.locator('.contract-clause-detail')).to_contain_text('Synthetic explanation.')
+        await expect(page.locator('.contract-clause-detail')).to_contain_text('Review the duration.')
+        await page.locator('[data-action="copilot-analysis"]').click()
+        await expect(page.locator('[data-copilot-drawer]')).to_have_attribute('aria-hidden', 'false')
+        await page.locator('#copilot-question').fill('Quels sont les principaux risques de ce contrat ?')
+        await page.locator('[data-submit-copilot]').click()
+        await expect(page.locator('[data-copilot-messages]')).to_contain_text('Synthetic extraction', timeout=30_000)
         await page.screenshot(path='artifacts/browser-e2e/features-contracts.png')
         assert not errors
     finally:
         await engine.dispose()
+
+
+def _synthetic_contract_pdf() -> bytes:
+    """Build an in-memory, text-based PDF for the real extraction path."""
+
+    fpdf = pytest.importorskip("fpdf")
+    pdf = fpdf.FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=11)
+    contract = """PARTIES
+Entre EnerSight SAS ci-apres le Prestataire, et Client SA ci-apres le Client.
+
+OBJET
+Le Prestataire fournit une plateforme SaaS de suivi energetique.
+
+PERIMETRE
+La prestation couvre la plateforme et son support standard.
+
+PAIEMENT
+Le Client regle les factures selon les modalites convenues entre les parties.
+
+DUREE
+Le contrat est conclu pour 12 mois. Il prend automatiquement fin apres 24 mois.
+
+CONFIDENTIALITE
+Le Client garde confidentielles les informations du Prestataire.
+
+PROPRIETE INTELLECTUELLE
+La propriete intellectuelle des livrables sera definie ulterieurement.
+
+RESPONSABILITE
+La responsabilite du Prestataire est illimitee.
+
+DONNEES PERSONNELLES
+Les parties traitent des donnees personnelles des utilisateurs.
+
+DROIT APPLICABLE
+Le present contrat est soumis au droit francais."""
+    for line in contract.splitlines():
+        if line:
+            pdf.multi_cell(180, 7, line)
+        else:
+            pdf.ln(7)
+    rendered = pdf.output()
+    return bytes(rendered) if isinstance(rendered, (bytes, bytearray)) else rendered.encode("latin-1")
+
+
+@pytest.mark.skipif(
+    os.getenv("CONTRACT_EXTERNAL_SEMANTIC_ANALYSIS_E2E") != "1",
+    reason="requires an explicitly authorized external semantic contract provider",
+)
+async def test_contract_upload_analysis_and_contract_agent_real_browser(browser_page, synthetic_user):
+    """A real local browser creates, persists, reads, and questions a PDF analysis."""
+
+    page = browser_page
+    errors: list[str] = []
+    response_failures: list[tuple[int, str]] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    page.on("response", lambda response: response_failures.append((response.status, response.url)) if response.status >= 500 else None)
+
+    await authenticate(page, synthetic_user)
+    await create_project(page, "Synthetic Energy SaaS project used only for contract browser acceptance.")
+    await page.locator('[data-nav-view="documents"]').click()
+    await expect(page.locator('[data-workspace]')).to_contain_text("DOCUMENTS")
+    await page.get_by_role("button", name=re.compile("Importer un document", re.IGNORECASE)).click()
+    await page.locator("form[data-form='upload-document'] input[type='file']").set_input_files({
+        "name": "synthetic-contract.pdf",
+        "mimeType": "application/pdf",
+        "buffer": _synthetic_contract_pdf(),
+    })
+    await page.locator("form[data-form='upload-document'] input[name='title']").fill("Synthetic browser contract")
+    async with page.expect_response(lambda response: response.request.method == "POST" and "/documents?" in response.url) as upload_info:
+        await page.locator("button[data-action='submit-upload']").click()
+    upload_response = await upload_info.value
+    assert upload_response.status == 201
+    upload_payload = await upload_response.json()
+    document_id = upload_payload["document"]["id"]
+    version_id = upload_payload["version"]["id"]
+
+    document_row = page.locator(".document-list .document-row").filter(has_text="Synthetic browser contract")
+    await expect(document_row).to_be_visible(timeout=30_000)
+    await document_row.locator('[data-action="open-document"]').click()
+    analyze_button = page.get_by_role("button", name=re.compile("Analyser le contrat", re.IGNORECASE))
+    await expect(analyze_button).to_be_visible(timeout=60_000)
+    await expect(page.locator(".document-detail")).to_contain_text("Document pr")
+
+    async with page.expect_response(
+        lambda response: response.request.method == "POST" and response.url.endswith(f"/documents/{document_id}/versions/{version_id}/analyses")
+    ) as analysis_info:
+        await analyze_button.click()
+    analysis_response = await analysis_info.value
+    assert analysis_response.status == 201
+    analysis_payload = await analysis_response.json()
+    assert analysis_payload["document_id"] == document_id
+    assert analysis_payload["document_version_id"] == version_id
+    assert analysis_payload["status"] == "completed"
+    assert analysis_payload["risk_index"]["contributors"]
+
+    await expect(page.locator(".contract-analysis")).to_be_visible(timeout=30_000)
+    await expect(page.locator(".contract-risk-index")).to_contain_text("Contributeurs")
+    await expect(page.locator(".contract-risk-index")).to_contain_text("Formule")
+    await expect(page.locator('[data-contract-clause]')).to_have_count(len(analysis_payload["clauses"]))
+
+    first_clause = page.locator("[data-contract-clause]").first
+    await first_clause.locator("summary").click()
+    await expect(first_clause).to_contain_text("Texte original")
+
+    recommended_clause = next(clause for clause in analysis_payload["clauses"] if clause["recommendation"])
+    recommended_detail = page.locator(f'#contract-clause-{recommended_clause["id"]}')
+    await recommended_detail.locator("summary").click()
+    await expect(recommended_detail).to_contain_text("Recommandation")
+
+    liability_clause = next(clause for clause in analysis_payload["clauses"] if clause["clause_type"] == "liability")
+    liability = page.locator(f'#contract-clause-{liability_clause["id"]}')
+    await liability.locator("summary").click()
+    await expect(liability).to_contain_text("Pourquoi")
+    await expect(liability).to_contain_text("responsabilit")
+
+    missing_termination = page.locator('[data-contract-clause][data-clause-status="MISSING"]').filter(has_text=re.compile("siliation", re.IGNORECASE))
+    await expect(missing_termination).to_have_count(1)
+    await missing_termination.locator("summary").click()
+    await expect(missing_termination).to_contain_text("Aucun passage source")
+
+    contradiction = page.locator('[data-contract-clause][data-clause-status="CONTRADICTORY"]')
+    await expect(contradiction).to_have_count(1)
+    await contradiction.locator("summary").click()
+    await expect(contradiction).to_contain_text("12 mois")
+    await expect(contradiction).to_contain_text("24 mois")
+
+    await page.locator('[data-action="copilot-analysis"]').click()
+    await expect(page.locator('[data-copilot-drawer]')).to_have_attribute("aria-hidden", "false")
+
+    async def ask_contract(question: str) -> str:
+        await page.locator("#copilot-question").fill(question)
+        async with page.expect_response(lambda response: response.request.method == "POST" and "/responses" in response.url, timeout=120_000) as response_info:
+            await page.locator("[data-submit-copilot]").click()
+        response = await response_info.value
+        assert response.status < 500
+        payload = await response.json()
+        await expect(page.locator("[data-copilot-messages]")).to_contain_text(question, timeout=30_000)
+        return payload["assistant_message"]["content"]
+
+    risks = await ask_contract("Quels sont les principaux risques de ce contrat ?")
+    termination = await ask_contract("Y a-t-il une clause de resiliation ?")
+    intellectual_property = await ask_contract("Que prevoit le contrat concernant la propriete intellectuelle ?")
+    non_compete = await ask_contract("Le contrat contient-il une clause de non-concurrence ?")
+    penalty = await ask_contract("Quelle penalite est prevue en cas de retard de paiement ?")
+    assert "principaux points" in risks
+    assert "identifi" in termination
+    assert "titulaire" in intellectual_property.casefold()
+    assert "identifi" in non_compete
+    assert "inventer" in penalty
+
+    await page.locator('[data-nav-view="documents"]').click()
+    await expect(page.locator(".document-summary")).to_contain_text("ANALYSES DE CONTRATS")
+    await expect(page.locator(".document-summary")).to_contain_text("1")
+    assert not errors
+    assert not response_failures

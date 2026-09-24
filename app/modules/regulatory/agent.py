@@ -697,10 +697,16 @@ def _context_text(request: AgentRequest) -> str:
         )
     if context.contract_analysis is not None:
         analysis = context.contract_analysis
+        clause_lines = [
+            f"{item.title} [{item.status}/{item.risk_level}]: {item.source_text}"
+            for item in analysis.clauses
+        ]
+        if not clause_lines:
+            clause_lines = [f"{item.category}: {item.source_quote}" for item in analysis.observations]
         sections.append(
             "CONTRACT ANALYSIS\n"
             f"Status: {analysis.status}\n"
-            + "\n".join(f"{item.category}: {item.source_quote}" for item in analysis.observations)
+            + "\n".join(clause_lines)
         )
     if context.graph_context is not None:
         graph = context.graph_context

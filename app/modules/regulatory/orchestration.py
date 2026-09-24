@@ -11,6 +11,7 @@ from app.modules.ai.providers.selection import get_llm_provider
 from app.modules.projects.repositories import ProjectContextRepository
 from app.modules.regulatory.agent import RegulatoryAgent
 from app.modules.regulatory.retrieval import get_regulatory_retriever
+from app.modules.documents.contract_agent import ContractAgent
 
 
 def build_regulatory_orchestrator(session: AsyncSession) -> Orchestrator:
@@ -24,8 +25,30 @@ def build_regulatory_orchestrator(session: AsyncSession) -> Orchestrator:
                 authoritative_fallback_enabled=get_settings().authoritative_source_fallback_enabled,
                 generation_max_tokens=get_settings().regulatory_generation_max_tokens,
                 verification_max_tokens=get_settings().regulatory_verification_max_tokens,
-            )
+            ),
+            ContractAgent(),
         ])),
+        context_builder=AuthorizedContextBuilder(
+            repository,
+            ProjectAuthorizationService(repository),
+        ),
+        agent_run_service=AgentRunService(session),
+    )
+
+
+def build_contract_orchestrator(session: AsyncSession) -> Orchestrator:
+    """Build the local Contract Agent path without initializing regulatory AI.
+
+    Contract questions selected with a document/version context are answered
+    only from the persisted contract analysis. Constructing the regulatory
+    retriever or LLM provider first adds an unrelated cold-start dependency to
+    this deterministic path.
+    """
+
+    repository = ProjectContextRepository(session)
+    return Orchestrator(
+        classifier=DeterministicIntentClassifier(),
+        router=Router(AgentRegistry([ContractAgent()])),
         context_builder=AuthorizedContextBuilder(
             repository,
             ProjectAuthorizationService(repository),

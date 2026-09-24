@@ -6,6 +6,7 @@ import asyncio
 import tempfile
 import time
 import uuid
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.observability import emit_event, elapsed_ms, metrics
-from app.modules.documents.extraction import ExtractionError, ExtractionResult, extract_native, extraction_status
+from app.modules.documents.extraction import ExtractionError, ExtractionResult, extract_native, extraction_status, page_text
 from app.modules.documents.models import Document, DocumentProcessingJob, DocumentVersion
 from app.modules.documents.ocr import OcrProvider, get_ocr_provider
 from app.modules.documents.storage import ObjectStorage, get_object_storage
@@ -121,6 +122,25 @@ class DocumentExtractionWorker:
                     raise ExtractionError("NATIVE_EXTRACTION_FAILED", "Stored document failed validation") from exc
                 try:
                     result = await asyncio.to_thread(extract_native, source_path, validated.extension, min_pdf_chars=self.settings.document_native_text_min_chars)
+                    if result.ocr_required_pages:
+                        if not self.settings.document_external_processing_enabled:
+                            # Native pages remain usable, but the metadata makes the
+                            # incomplete page coverage explicit to later analysis.
+                            result = replace(result, method="native_partial")
+                        else:
+                            provider = self.ocr_provider or get_ocr_provider()
+                            ocr_result = await provider.extract(payload, version.original_filename, validated.mime_type)
+                            if len(ocr_result.pages) != len(result.pages):
+                                raise ExtractionError("OCR_INVALID_RESPONSE", "OCR page count did not match the source PDF")
+                            pages = tuple(
+                                ocr_result.pages[index - 1] if index in result.ocr_required_pages else result.pages[index - 1]
+                                for index in range(1, len(result.pages) + 1)
+                            )
+                            methods = tuple("OCR" if index in result.ocr_required_pages else "NATIVE" for index in range(1, len(pages) + 1))
+                            result = ExtractionResult(
+                                page_text(pages), pages, "hybrid_native_ocr", "native-pdf-mistral-ocr-v1",
+                                ocr_result.provider, ocr_result.model, methods,
+                            )
                 except ExtractionError as exc:
                     if exc.category != "OCR_REQUIRED":
                         raise
@@ -187,6 +207,8 @@ class DocumentExtractionWorker:
                     "provider": result.provider,
                     "model": result.model,
                     "page_count": len(result.pages),
+                    "page_methods": list(result.page_methods) or ["OCR" if "ocr" in result.method else "NATIVE"] * len(result.pages),
+                    "ocr_required_pages": list(result.ocr_required_pages),
                     "text_sha256": result.text_sha256,
                     "processed_at": now.isoformat(),
                 }

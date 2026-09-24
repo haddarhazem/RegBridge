@@ -271,15 +271,47 @@ class ProjectContextRepository:
         return DocumentProjection(id=document.id, title=document.title, document_type=document.document_type, classification=document.classification, visibility=document.visibility, version_id=version.id, version_number=version.version_number, extracted_text=(version.extracted_text or "")[:6000] or None)
 
     async def load_contract_analysis_projection(self, project_id: uuid.UUID, user_id: uuid.UUID, analysis_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID):
-        from app.modules.ai.projections import ContractAnalysisProjection, ContractObservationProjection
+        from app.modules.ai.projections import ContractAnalysisProjection, ContractClauseProjection
         from app.modules.documents.authorization import DocumentAuthorizationPolicy
         from app.modules.documents.contract_analysis_models import ContractAnalysis
-        from app.modules.documents.models import Document
+        from app.modules.documents.models import Document, DocumentVersion
 
-        analysis = await self.session.scalar(select(ContractAnalysis).where(ContractAnalysis.id == analysis_id, ContractAnalysis.project_id == project_id, ContractAnalysis.document_id == document_id, ContractAnalysis.document_version_id == version_id).options(selectinload(ContractAnalysis.findings)))
+        analysis = await self.session.scalar(select(ContractAnalysis).where(ContractAnalysis.id == analysis_id, ContractAnalysis.project_id == project_id, ContractAnalysis.document_version_id == version_id).options(selectinload(ContractAnalysis.clauses)))
         document = await self.session.scalar(select(Document).where(Document.id == document_id, Document.project_id == project_id, Document.deleted_at.is_(None)))
+        version = await self.session.scalar(select(DocumentVersion).where(DocumentVersion.id == version_id, DocumentVersion.document_id == document_id))
         membership = await self.session.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id, ProjectMember.status == "active"))
-        if analysis is None or document is None or membership is None or not DocumentAuthorizationPolicy().can_read(document.visibility, document.classification, membership, document.owner_user_id, user_id):
+        if analysis is None or document is None or version is None or membership is None or not DocumentAuthorizationPolicy().can_read(document.visibility, document.classification, membership, document.owner_user_id, user_id):
             return None
-        observations = [ContractObservationProjection(id=finding.id, category=finding.category, source_quote=finding.evidence_quote, document_version_id=finding.evidence_document_version_id, start_char=finding.evidence_start_char, end_char=finding.evidence_end_char) for finding in analysis.findings[:20]]
-        return ContractAnalysisProjection(id=analysis.id, document_id=analysis.document_id, document_version_id=analysis.document_version_id, strategy=analysis.strategy, status=analysis.status, observations=observations, limitations=["Les interprétations sémantiques de risque et de recommandation ne sont pas incluses."])
+        clauses = []
+        for clause in analysis.clauses[:20]:
+            refs = clause.source_refs if isinstance(clause.source_refs, dict) else {}
+            detail = refs.get("analysis") if isinstance(refs.get("analysis"), dict) else {}
+            clauses.append(ContractClauseProjection(
+                id=clause.id,
+                clause_type=clause.clause_type,
+                title=detail.get("title") or clause.heading or clause.clause_type or "Clause analysée",
+                status=detail.get("status") or "FOUND",
+                risk_level=clause.risk_level,
+                source_text=clause.extracted_text[:4000],
+                source_location=detail.get("source_location"),
+                verification_status=detail.get("verification_status") or "UNVERIFIED",
+                source_method=detail.get("source_method") or "NATIVE",
+                evidence_quotes=[item.get("quote", "")[:1200] for item in refs.get("evidence", []) if isinstance(item, dict) and isinstance(item.get("quote"), str)][:4],
+                plain_language_summary=detail.get("plain_language_summary") or clause.finding or "Passage analysé.",
+                purpose=detail.get("purpose") or "Le rôle de cette disposition doit être examiné dans son contexte.",
+                issues=detail.get("issues", []),
+                why_it_matters=detail.get("why_it_matters"),
+                recommendation=clause.recommendation,
+                suggested_revision=detail.get("suggested_revision"),
+                limitations=detail.get("limitations", []),
+            ))
+        return ContractAnalysisProjection(
+            id=analysis.id,
+            document_id=document.id,
+            document_version_id=analysis.document_version_id,
+            status=analysis.verification_status,
+            summary=analysis.summary,
+            contract_type=analysis.contract_type,
+            clauses=clauses,
+            limitations=["Les résultats expliquent les passages détectés et ne constituent pas un avis juridique."],
+        )
