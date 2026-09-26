@@ -5,8 +5,9 @@ from docx import Document as DocxDocument
 from fpdf import FPDF
 
 from app.modules.documents.contract_analysis_service import ContractAnalysisService
-from app.modules.documents.extraction import ExtractionError, extract_native
+from app.modules.documents.extraction import ExtractionError, ExtractionResult, extract_native
 from app.modules.documents.ocr import MistralOcrProvider
+from app.modules.documents.worker import _retain_native_partial
 
 
 def test_utf8_text_is_extracted_without_ocr(tmp_path):
@@ -78,6 +79,24 @@ def test_mixed_pdf_retains_native_page_and_marks_only_unusable_page_for_ocr(tmp_
     assert result.pages[0].startswith("This native page")
     assert result.ocr_required_pages == (2,)
     assert result.page_methods == ("NATIVE", "OCR_REQUIRED")
+
+
+def test_ocr_provider_failure_retains_native_partial_pages():
+    native_result = ExtractionResult(
+        "PAGE 1\nReadable clause\n\nPAGE 2",
+        ("Readable clause", ""),
+        "native",
+        "native-pdf-v1",
+        page_methods=("NATIVE", "OCR_REQUIRED"),
+        ocr_required_pages=(2,),
+    )
+
+    result = _retain_native_partial(native_result, ExtractionError("OCR_PROVIDER_UNAVAILABLE"))
+
+    assert result.method == "native_partial"
+    assert result.pages == native_result.pages
+    assert result.page_methods == ("NATIVE", "OCR_REQUIRED")
+    assert result.ocr_required_pages == (2,)
 
 
 @pytest.mark.asyncio

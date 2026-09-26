@@ -27,6 +27,9 @@ class LLMGenerationRequest(BaseModel):
     response_format: dict[str, Any] | None = None
     prompt_version: str | None = Field(default=None, max_length=80)
     operation: str | None = Field(default=None, max_length=100)
+    # Callers with a higher-level bounded retry policy can lower the provider
+    # retry count for one request. ``None`` keeps the provider default.
+    max_provider_attempts: int | None = Field(default=None, ge=1, le=5)
 
 
 class LLMExecutionMetadata(BaseModel):

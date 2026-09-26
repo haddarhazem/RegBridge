@@ -291,7 +291,8 @@ class GeminiLLMProvider:
             except TimeoutError as exc:
                 self._raise_unavailable(request, started, 408, "provider queue wait exhausted", type(exc).__name__)
             try:
-                for attempt in range(1, self.max_attempts + 1):
+                attempt_limit = request.max_provider_attempts or self.max_attempts
+                for attempt in range(1, attempt_limit + 1):
                     spacing = self.min_request_interval_seconds - (time.perf_counter() - self._last_request_finished)
                     remaining = self.max_total_wait_seconds - (time.perf_counter() - started)
                     if spacing > 0:
@@ -308,7 +309,7 @@ class GeminiLLMProvider:
                         )
                     except (httpx.TimeoutException, httpx.TransportError) as exc:
                         self._last_request_finished = time.perf_counter()
-                        if attempt >= self.max_attempts:
+                        if attempt >= attempt_limit:
                             self._raise_unavailable(request, started, 408 if isinstance(exc, httpx.TimeoutException) else None, str(exc), type(exc).__name__)
                         await self._retry_wait(request, started, attempt, None, "TRANSIENT_TRANSPORT")
                         continue
@@ -318,7 +319,7 @@ class GeminiLLMProvider:
                     metadata = _safe_error_metadata(response)
                     retryable = response.status_code in {429, 500, 502, 503, 504}
                     hard_quota = metadata["rate_limit_classification"] == "DAILY_QUOTA"
-                    if not retryable or hard_quota or attempt >= self.max_attempts:
+                    if not retryable or hard_quota or attempt >= attempt_limit:
                         self._raise_unavailable(request, started, response.status_code, self._safe_failure_reason(metadata), "HTTPStatusError", metadata)
                     await self._retry_wait(
                         request,

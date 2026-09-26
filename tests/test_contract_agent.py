@@ -42,6 +42,13 @@ def analysis_context() -> AuthorizedContext:
             plain_language_summary="The rights holder is not clearly identified.", purpose="Determines rights in deliverables.",
             issues=["Rights holder is not determined."], why_it_matters="Rights could be disputed.", recommendation="Identify the rights holder.",
         ),
+        ContractClauseProjection(
+            id=uuid.uuid4(), clause_type="term", title="Article 6 - Duration", status="CONTRADICTORY", risk_level="high",
+            source_text="The initial duration is twelve months, while automatic end occurs after twenty-four months.", source_location="Article 6 - Duration",
+            verification_status="VERIFIED", evidence_quotes=["initial duration is twelve months", "end occurs after twenty-four months"],
+            plain_language_summary="Two verified passages describe incompatible durations.", purpose="Defines the contract duration.",
+            issues=["The duration is contradictory."], why_it_matters="The applicable end date is uncertain.", recommendation="Clarify the applicable duration.",
+        ),
     ]
     return AuthorizedContext(
         subject_type="project", subject_id=uuid.uuid4(),
@@ -86,9 +93,30 @@ async def test_contract_agent_explains_risks_and_preserves_legal_scope_boundary(
     assert "Preuve du contrat" in liability.answer
     assert "The provider liability is unlimited." in liability.answer
 
+    duration = await ask("Quel est le probleme avec la duree ?")
+    assert "twelve months" in duration.answer and "twenty-four months" in duration.answer
+
     legal = await ask("Ce contrat est-il legal ?")
     assert "confirmer" in legal.answer
     assert "Liability" in legal.answer
+
+
+@pytest.mark.asyncio
+async def test_contract_agent_answers_verified_internal_duration_contradiction_when_global_consistency_is_partial():
+    context = analysis_context()
+    context.contract_analysis.status = "partial"
+    result = await ContractAgent().run(AgentRequest(
+        request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question="Quel est le probleme avec la duree ?",
+        capability="contract", locale="fr", subject_type="project", subject_id=context.subject_id, authorized_context=context,
+    ))
+    assert result.status == "succeeded"
+    assert "twelve months" in result.answer and "twenty-four months" in result.answer
+
+    cross_clause = await ContractAgent().run(AgentRequest(
+        request_id=uuid.uuid4(), parent_run_id=uuid.uuid4(), question="Y a-t-il une incoherence entre clauses ?",
+        capability="contract", locale="fr", subject_type="project", subject_id=context.subject_id, authorized_context=context,
+    ))
+    assert "coherence globale" in cross_clause.answer
 
 
 @pytest.mark.asyncio

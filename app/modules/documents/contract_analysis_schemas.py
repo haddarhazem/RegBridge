@@ -84,6 +84,8 @@ class ContractAnalysisResponse(BaseModel):
     summary: str | None
     recommendations: list[str] = Field(default_factory=list)
     missing_context: list[str] = Field(default_factory=list)
+    section_analysis_status: Literal["completed", "failed"] | None = None
+    consistency_status: Literal["completed", "failed"] | None = None
     status: Literal["running", "completed", "partial", "failed"]
     error_code: str | None = None
     created_at: datetime

@@ -77,6 +77,8 @@ def analysis_response(analysis) -> ContractAnalysisResponse:
         summary=analysis.summary,
         recommendations=analysis.recommendations if isinstance(analysis.recommendations, list) else [],
         missing_context=metadata.get("missing_context", analysis.missing_context if isinstance(analysis.missing_context, list) else []),
+        section_analysis_status=metadata.get("section_analysis_status"),
+        consistency_status=metadata.get("consistency_status"),
         status=status,
         error_code="contract_analysis_failed" if status == "failed" else None,
         created_at=analysis.created_at,
@@ -197,6 +199,11 @@ async def retry_processing_job(document_id: uuid.UUID, version_id: uuid.UUID, pr
 @router.post("/documents/{document_id}/versions/{version_id}/analyses", response_model=ContractAnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def analyze_contract(document_id: uuid.UUID, version_id: uuid.UUID, principal: Principal, session: Session) -> ContractAnalysisResponse:
     return analysis_response(await ContractAnalysisService(session).analyze(principal, document_id, version_id))
+
+
+@router.post("/contract-analyses/{analysis_id}/consistency/retry", response_model=ContractAnalysisResponse)
+async def retry_contract_consistency(analysis_id: uuid.UUID, principal: Principal, session: Session) -> ContractAnalysisResponse:
+    return analysis_response(await ContractAnalysisService(session).retry_consistency(principal, analysis_id))
 
 
 @router.get("/contract-analyses/{analysis_id}", response_model=ContractAnalysisResponse)

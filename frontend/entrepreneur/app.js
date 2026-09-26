@@ -15,7 +15,7 @@
   const state = {
     user: null, projects: [], project: null, view: 'dashboard', tab: 'overview',
     onboarding: null, facts: [], graph: null, graphError: null, assessment: null, assessments: [], roadmap: null, roadmapSourceAssessment: null,
-    documents: [], documentFilter: 'all', members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [], documentPollTimer: null, documentPollAttempts: 0,
+    documents: [], documentFilter: 'all', members: [], frameworks: [], controls: [], score: null, scoreHistory: [], activeFrameworkVersionId: null, selectedControlId: null, selectedControlEvidence: [], documentPollTimer: null, documentPollAttempts: 0, contractAnalysisInFlight: false,
     editingFactId: null,
     copilot: { visible: false, mode: 'docked', unread: false, projectId: null, conversationId: null, messages: [], loading: false, historyLoading: false, error: '', notice: '', controller: null, historyController: null, generationConversationId: null, requestId: null, status: null, pollTimer: null, pollAttempts: 0, context: { documentId: null, versionId: null, analysisId: null } },
   };
@@ -35,7 +35,7 @@
   function navigate(view, options = {}) {
     const url = routeUrl(view, options.projectId === undefined ? state.project?.id : options.projectId, options);
     window.history.pushState({}, '', url);
-    loadRoute();
+    return loadRoute();
   }
 
   function setBusy(element, busy, label) {
@@ -682,6 +682,7 @@
       return openCopilot();
     }
     if (name === 'open-contract-analysis') return navigate('contracts', { document: target.dataset.documentId, version: target.dataset.versionId, analysis: target.dataset.analysisId });
+    if (name === 'retry-contract-consistency') return retryContractConsistency(target);
     if (name === 'focus-contract-clause') {
       const detail = document.querySelector(`#contract-clause-${CSS.escape(target.dataset.clauseId)}`);
       if (detail) { detail.open = true; detail.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); detail.focus({ preventScroll: true }); }
@@ -814,14 +815,39 @@
     const select = document.querySelector('[data-contract-document]');
     if (!select?.value) { select?.focus(); return; }
     const [documentId, versionId] = select.value.split('|');
-    await perform(button, 'Analyse…', () => api.analyzeContract(documentId, versionId), (analysis) => navigate('contracts', { document: documentId, version: versionId, analysis: analysis.id }));
+    await launchContractAnalysis(button, documentId, versionId);
   }
 
   async function analyzeDocumentContract(button) {
     const documentId = button.dataset.documentId;
     const versionId = button.dataset.versionId;
     if (!documentId || !versionId) return;
-    await perform(button, 'Analyse…', () => api.analyzeContract(documentId, versionId), (analysis) => navigate('contracts', { document: documentId, version: versionId, analysis: analysis.id }));
+    await launchContractAnalysis(button, documentId, versionId);
+  }
+
+  async function launchContractAnalysis(button, documentId, versionId) {
+    if (state.contractAnalysisInFlight) return;
+    state.contractAnalysisInFlight = true;
+    setBusy(button, true, 'Analyse en cours…');
+    try {
+      // The endpoint is synchronous: wait for the completed persisted result,
+      // then refresh the current route without reloading the browser page.
+      const analysis = await api.analyzeContract(documentId, versionId);
+      await navigate('contracts', { document: documentId, version: versionId, analysis: analysis.id });
+    } catch (error) {
+      setBusy(button, false);
+      showToast(errorMessage(error));
+    } finally {
+      state.contractAnalysisInFlight = false;
+    }
+  }
+
+  async function retryContractConsistency(button) {
+    const analysisId = button.dataset.analysisId;
+    const documentId = button.dataset.documentId;
+    const versionId = button.dataset.versionId;
+    if (!analysisId || !documentId || !versionId) return;
+    await perform(button, 'Verification en cours…', () => api.retryContractConsistency(analysisId), () => navigate('contracts', { document: documentId, version: versionId, analysis: analysisId }));
   }
 
   function scheduleDocumentPolling() {

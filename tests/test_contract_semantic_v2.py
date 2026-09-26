@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from app.modules.documents.contract_analysis import EvidenceClaim, segment_contract_text, verify_evidence_claim
+from app.modules.documents.contract_analysis import EvidenceClaim, extract_parties, segment_contract_text, verify_evidence_claim
 from app.modules.documents.contract_risk import calculate_contract_risk_index
 from app.modules.documents.contract_semantic import (
     ConsistencyDraft,
@@ -15,10 +15,12 @@ from app.modules.documents.contract_semantic import (
     SemanticClauseDraft,
     SemanticContractResult,
     SemanticEvidenceClaim,
+    InternalContradictionDraft,
     build_verified_semantic_output,
+    ContractSemanticFailure,
     ProviderContractSemanticAnalyzer,
 )
-from app.modules.ai.llm import LLMGenerationResponse
+from app.modules.ai.llm import LLMGenerationError, LLMGenerationResponse
 
 
 SYNTHETIC_CONTRACT_V2 = """PARTIES
@@ -50,6 +52,34 @@ Les parties traitent des donnees personnelles. Le present contrat ne prevoit pas
 
 ARTICLE 12 - DROIT APPLICABLE
 Le present contrat est soumis au droit francais.
+"""
+
+
+MARKDOWN_ARTICLE_PDF_TEXT = """PAGE 1
+Entre EnerSight SAS, ci-apres le Prestataire, et GreenFactory SAS, ci-apres le Client.
+
+## Article 1 — Objet
+Le Prestataire fournit une plateforme SaaS.
+
+## Article 5 — Prix et paiement
+Les factures doivent etre reglees dans un delai raisonnable suivant leur reception.
+
+PAGE 2
+Ce delai ne fixe aucun nombre de jours.
+
+## Article 6 — Duree
+Le contrat est conclu pour une duree initiale de douze (12) mois.
+
+## Article 7 — Confidentialite
+Le Client garde confidentielles les informations du Prestataire.
+
+PAGE 3
+## Article 10 — Responsabilite
+La responsabilite financiere du Prestataire n'est soumise a aucune limitation de montant.
+
+PAGE 4
+## Article 15 — Modification du contrat
+Toute modification doit etre convenue par ecrit.
 """
 
 
@@ -146,6 +176,20 @@ def test_evidence_verification_rejects_other_section_and_accepts_safe_normalizat
     assert verify_evidence_claim(section=liability, claim=EvidenceClaim(section_id=payment.section_id, quote="Aucun plafond contractuel de responsabilite n'est prevu"), document_version_id=version) is None
 
 
+def test_markdown_article_headings_win_over_pdf_page_markers_and_preserve_page_provenance():
+    sections = segment_contract_text(MARKDOWN_ARTICLE_PDF_TEXT)
+
+    assert all((section.heading or "").upper() not in {"PAGE 1", "PAGE 2", "PAGE 3", "PAGE 4"} for section in sections)
+    assert [section.article_number for section in sections if section.article_number] == ["1", "5", "6", "7", "10", "15"]
+    payment = next(section for section in sections if section.article_number == "5")
+    liability = next(section for section in sections if section.article_number == "10")
+    assert payment.heading == "Article 5 — Prix et paiement"
+    assert payment.page_start == 1 and payment.page_end == 2
+    assert liability.heading == "Article 10 — Responsabilite"
+    assert liability.page_start == liability.page_end == 3
+    assert extract_parties(sections) == ["EnerSight SAS - Prestataire", "GreenFactory SAS - Client"]
+
+
 def test_risk_index_uses_only_verified_material_findings():
     output = _output()
     index = calculate_contract_risk_index(output.clauses)
@@ -169,7 +213,7 @@ async def test_provider_semantic_analyzer_requires_structured_per_section_and_co
         async def generate(self, request):
             self.calls.append(request)
             if request.operation == "contract_consistency_analysis":
-                body = {"contract_type": "Contrat de prestation de services", "effective_dates": [], "consistency_findings": []}
+                body = {"findings": []}
             else:
                 raw = request.messages[-1].content
                 section_id = json.loads(raw)["section_id"]
@@ -182,6 +226,51 @@ async def test_provider_semantic_analyzer_requires_structured_per_section_and_co
     assert len(result.clauses) == len(sections)
     assert len(provider.calls) == len(sections) + 1
     assert all(call.response_format for call in provider.calls)
+    consistency_call = provider.calls[-1]
+    assert consistency_call.max_provider_attempts == 1
+    assert consistency_call.prompt_version == "contract-cross-clause-consistency-v1"
+
+
+@pytest.mark.asyncio
+async def test_provider_semantic_analyzer_exposes_only_a_safe_provider_failure_category():
+    sections = segment_contract_text(SYNTHETIC_CONTRACT_V2)[:1]
+
+    class Provider:
+        async def generate(self, request):
+            raise LLMGenerationError("private provider body must not persist", category="provider_output_shape_invalid")
+
+    with pytest.raises(ContractSemanticFailure, match="provider_provider_output_shape_invalid") as captured:
+        await ProviderContractSemanticAnalyzer(Provider()).analyze(sections=sections, parties=[])
+
+    assert "private" not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_provider_semantic_analyzer_retains_verified_section_drafts_when_consistency_is_invalid():
+    sections = segment_contract_text(SYNTHETIC_CONTRACT_V2)[:2]
+
+    class Provider:
+        async def generate(self, request):
+            if request.operation == "contract_consistency_analysis":
+                return LLMGenerationResponse(content="[]", model="test-model")
+            section_id = json.loads(request.messages[-1].content)["section_id"]
+            return LLMGenerationResponse(
+                content=json.dumps({
+                    "section_id": section_id,
+                    "clause_type": "other",
+                    "summary": "Section analysee.",
+                    "status": "FOUND",
+                    "risk_level": "informational",
+                    "evidence_claims": [],
+                }),
+                model="test-model",
+            )
+
+    result = await ProviderContractSemanticAnalyzer(Provider()).analyze(sections=sections, parties=[])
+
+    assert len(result.clauses) == len(sections)
+    assert result.consistency_findings == []
+    assert result.consistency_failure_category == "invalid_consistency_response"
 
 
 @pytest.mark.parametrize("left,right,expected", [("12 mois", "24 mois", True), ("12 mois", "12 mois", False)])
@@ -197,3 +286,129 @@ def test_consistency_fixture_requires_two_distinct_verified_evidence_items(left,
     if expected:
         quotes = " ".join(item.quote for item in contradiction[0].evidence)
         assert left in quotes and right in quotes
+
+
+def test_same_article_duration_contradiction_promotes_the_article_without_a_duplicate_risk():
+    text = """ARTICLE 6 - DUREE
+Le contrat est conclu pour une duree initiale de douze (12) mois.
+Le contrat prendra automatiquement fin vingt-quatre (24) mois apres sa date de signature.
+"""
+    section = segment_contract_text(text)[0]
+    result = SemanticContractResult(
+        clauses=[SemanticClauseDraft(section_id=section.section_id, clause_type="term", summary="La duree est decrite.", status="FOUND", risk_level="low")],
+        consistency_findings=[ConsistencyDraft(
+            clause_type="term", severity="high", description="Contradiction entre le renouvellement automatique et la fin automatique du contrat a 24 mois.",
+            section_ids=[section.section_id, section.section_id],
+            evidence_a=SemanticEvidenceClaim(section_id=section.section_id, quote="duree initiale de douze (12) mois"),
+            evidence_b=SemanticEvidenceClaim(section_id=section.section_id, quote="prendra automatiquement fin vingt-quatre (24) mois apres sa date de signature"),
+        )],
+    )
+
+    output = build_verified_semantic_output(text=text, document_version_id=uuid.uuid4(), source_method="NATIVE", result=result)
+
+    duration = next(item for item in output.clauses if item.section_id == section.section_id)
+    assert duration.title == "ARTICLE 6 - DUREE"
+    assert duration.status == "CONTRADICTORY"
+    assert len(duration.evidence) == 2
+    assert sum(item.status == "CONTRADICTORY" for item in output.clauses) == 1
+    assert calculate_contract_risk_index(output.clauses).contradiction_count == 1
+
+
+def test_same_article_duration_contradiction_has_a_narrow_deterministic_backstop():
+    text = """ARTICLE 6 - DUREE
+Le contrat est conclu pour une duree initiale de douze (12) mois.
+Il est reconduit automatiquement chaque annee.
+Le contrat prendra automatiquement fin vingt-quatre (24) mois apres sa date de signature.
+"""
+    section = segment_contract_text(text)[0]
+    result = SemanticContractResult(clauses=[SemanticClauseDraft(
+        section_id=section.section_id, clause_type="term", summary="La duree est decrite.", status="FOUND", risk_level="low"
+    )])
+
+    output = build_verified_semantic_output(text=text, document_version_id=uuid.uuid4(), source_method="NATIVE", result=result)
+
+    duration = output.clauses[0]
+    assert duration.status == "CONTRADICTORY"
+    assert [item.quote for item in duration.evidence] == [
+        "Le contrat est conclu pour une duree initiale de douze (12) mois.",
+        "Le contrat prendra automatiquement fin vingt-quatre (24) mois apres sa date de signature.",
+    ]
+
+
+def test_structured_internal_contradiction_is_verified_without_global_consistency():
+    text = """ARTICLE 6 - DUREE
+Le contrat est conclu pour une duree initiale de douze (12) mois.
+Le contrat prendra automatiquement fin vingt-quatre (24) mois apres sa date de signature.
+"""
+    section = segment_contract_text(text)[0]
+    result = SemanticContractResult(clauses=[SemanticClauseDraft(
+        section_id=section.section_id,
+        clause_type="term",
+        summary="La duree est decrite.",
+        status="FOUND",
+        risk_level="low",
+        internal_contradictions=[InternalContradictionDraft(
+            description="Deux durees incompatibles sont indiquees.",
+            severity="high",
+            evidence_a=SemanticEvidenceClaim(section_id=section.section_id, quote="duree initiale de douze (12) mois"),
+            evidence_b=SemanticEvidenceClaim(section_id=section.section_id, quote="prendra automatiquement fin vingt-quatre (24) mois apres sa date de signature"),
+        )],
+    )])
+    output = build_verified_semantic_output(text=text, document_version_id=uuid.uuid4(), source_method="NATIVE", result=result)
+    duration = next(item for item in output.clauses if item.clause_type == "term")
+    assert duration.status == "CONTRADICTORY"
+    assert duration.verification_status == "VERIFIED"
+    assert len(duration.evidence) == 2
+
+
+def test_cross_clause_payload_is_compact_and_excludes_full_section_text():
+    sections = segment_contract_text(SYNTHETIC_CONTRACT_V2)[:1]
+    draft = SemanticClauseDraft(
+        section_id=sections[0].section_id,
+        clause_type="parties",
+        summary="Parties identifiees.",
+        status="FOUND",
+        risk_level="informational",
+        evidence_claims=[SemanticEvidenceClaim(section_id=sections[0].section_id, quote="Entre EnerSight SAS")],
+    )
+    compact = ProviderContractSemanticAnalyzer._compact_consistency_input([draft], sections)
+    assert compact[0]["section_id"] == sections[0].section_id
+    assert "raw_text" not in compact[0]
+    assert "minimal_verified_excerpt" in compact[0]["verified_findings"][0]
+
+
+def test_contract_only_output_replaces_regulatory_conclusions_and_labels_numeric_examples():
+    text = "ARTICLE 9 - DONNEES\nLes roles ne sont pas definis."
+    section = segment_contract_text(text)[0]
+    result = SemanticContractResult(clauses=[SemanticClauseDraft(
+        section_id=section.section_id, clause_type="data_protection", status="AMBIGUOUS", risk_level="medium",
+        summary="Non-conformite au RGPD et risque de sanctions CNIL.",
+        issues=["Le contrat contrevient potentiellement au Code de commerce."],
+        recommendations=["Prevoir 30 jours de paiement."],
+        suggested_revision="Fixer 99.5% de disponibilite.",
+        evidence_claims=[SemanticEvidenceClaim(section_id=section.section_id, quote="roles ne sont pas definis")],
+    )])
+
+    clause = build_verified_semantic_output(text=text, document_version_id=uuid.uuid4(), source_method="NATIVE", result=result).clauses[0]
+
+    assert "RGPD" not in clause.plain_language_summary
+    assert "CNIL" not in " ".join(clause.issues)
+    assert "Exemple uniquement" in clause.recommendation
+    assert "Exemple uniquement" in clause.suggested_revision
+
+
+def test_non_material_other_section_is_preserved_as_informational_found_without_forced_evidence():
+    text = "ARTICLE 4 - OBLIGATIONS DU CLIENT\nLe Client fournit les informations necessaires au service."
+    section = segment_contract_text(text)[0]
+    result = SemanticContractResult(clauses=[SemanticClauseDraft(
+        section_id=section.section_id, clause_type="other", status="OTHER", risk_level="unknown",
+        summary="Les obligations du Client sont decrites.",
+    )])
+
+    clause = build_verified_semantic_output(text=text, document_version_id=uuid.uuid4(), source_method="NATIVE", result=result).clauses[0]
+
+    assert clause.status == "FOUND"
+    assert clause.risk_level == "informational"
+    assert clause.verification_status == "VERIFIED"
+    assert clause.evidence == []
+    assert calculate_contract_risk_index([clause]).score == 0

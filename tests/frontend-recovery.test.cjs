@@ -49,6 +49,15 @@ test('provider rate limiting uses the safe demo-facing message', () => {
   assert.doesNotMatch(source, /Copilot rate limit reached|RESOURCE_EXHAUSTED|provider_rate_limited/);
 });
 
+test('contract analysis awaits the synchronous refresh and blocks duplicate starts', () => {
+  const source = fs.readFileSync('frontend/entrepreneur/app.js', 'utf8');
+  assert.match(source, /return loadRoute\(\);/);
+  assert.match(source, /contractAnalysisInFlight: false/);
+  assert.match(source, /if \(state\.contractAnalysisInFlight\) return;/);
+  assert.match(source, /await navigate\('contracts', \{ document: documentId, version: versionId, analysis: analysis\.id \}\)/);
+  assert.doesNotMatch(source, /window\.location\.reload\(\)/);
+});
+
 test('copilot maps the real fallback stages without exposing domain query text', () => {
   const source = fs.readFileSync('frontend/entrepreneur/app.js', 'utf8');
   assert.match(source, /RETRIEVING_MISSING_DOMAIN_EVIDENCE/);
@@ -166,6 +175,17 @@ test('contract analysis renders the explainable risk index rather than a legal-v
   const html = views.contracts({documents:[{document:{id:'document-1',title:'Synthetic contract'},versions:[{id:'version-1',version_number:1,malware_scan_status:'clean',extraction_status:'ready'}],analyses:[analysis]}]});
   for (const expected of ['Indice de risque contractuel', '8 / 100', 'Contributeurs du score', 'Liability: high', 'Synthetic deterministic formula.']) assert.match(html, new RegExp(expected));
   assert.doesNotMatch(html, /legal-validity|safe-to-sign|compliance score/i);
+});
+
+test('partial contract analysis retains the completed section findings with its limitation', () => {
+  const views = load('frontend/entrepreneur/views.js').RegBridgeEntrepreneurViews;
+  const clause = {id:'clause-1', clause_type:'payment', title:'Payment', status:'FOUND', risk_level:'informational', source_text:'Synthetic source wording.', source_location:'Section 1', verification_status:'VERIFIED', source_method:'NATIVE', plain_language_summary:'Synthetic section finding.', purpose:'Describes payment.', issues:[], ambiguities:[], missing_elements:[], potential_consequences:[], limitations:[]};
+  const analysis = {id:'analysis-1', analysis_version:2, status:'partial', document_version_id:'version-1', created_at:'2026-09-25T00:00:00Z', clauses:[clause], missing_context:['Cross-section comparison unavailable.']};
+  const html = views.contracts({documents:[{document:{id:'document-1',title:'Synthetic contract'},versions:[{id:'version-1',version_number:1,malware_scan_status:'clean',extraction_status:'ready'}],analyses:[analysis]}]});
+  assert.match(html, /Analyse partielle/);
+  assert.match(html, /Synthetic section finding/);
+  assert.match(html, /Payment/);
+  assert.doesNotMatch(html, /Aucune clause n’a pu être identifiée/);
 });
 
 test('contract detail provides summary, source evidence, explanation, recommendation and filters', () => {

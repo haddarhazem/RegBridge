@@ -97,6 +97,7 @@ class ContractSection(BaseModel):
 
     section_id: str = Field(min_length=1, max_length=80)
     heading: str | None = Field(default=None, max_length=240)
+    article_number: str | None = Field(default=None, max_length=40)
     raw_text: str = Field(min_length=1, max_length=16000)
     normalized_text: str = Field(min_length=1, max_length=16000)
     page_start: int = Field(ge=1)
@@ -139,16 +140,42 @@ def _page_for_offset(source: str, offset: int) -> int:
     return page
 
 
-def _is_heading(value: str) -> bool:
-    stripped = value.strip()
+def _section_content_end(source: str, start: int, end: int) -> int:
+    """Keep a trailing extraction page marker out of a section's page range."""
+
+    region = source[start:end]
+    markers = list(re.finditer(r"(?m)^PAGE\s+\d+\s*$", region))
+    if markers and not region[markers[-1].end():].strip():
+        return max(start, start + markers[-1].start() - 1)
+    return max(start, end - 1)
+
+
+def _heading_details(value: str) -> tuple[str, str | None] | None:
+    """Return a document heading and optional article number.
+
+    ``PAGE n`` markers are extraction provenance, never contract headings.
+    Markdown hashes are common in PDF extractors and are removed only for
+    classification/display; offsets continue to reference immutable text.
+    """
+
+    stripped = re.sub(r"^#{1,6}\s*", "", value.strip())
     if not stripped or len(stripped) > 180 or len(stripped.split()) > 14:
-        return False
-    if re.match(r"^(?:article|clause)\s+\d+(?:\s*[-.:].*)?$", stripped, flags=re.IGNORECASE):
-        return True
+        return None
+    if re.fullmatch(r"PAGE\s+\d+", stripped, flags=re.IGNORECASE):
+        return None
+    article = re.match(r"^(?:article|clause)\s+([0-9]+(?:\.[0-9]+)?)(?:\s*[-.:—–]+\s*.*)?$", stripped, flags=re.IGNORECASE)
+    if article:
+        return stripped, article.group(1)
     if re.match(r"^\d+(?:\.\d+)*[.)]\s+\S+", stripped):
-        return True
+        return stripped, stripped.split(None, 1)[0].rstrip(".)")
     letters = "".join(character for character in stripped if character.isalpha())
-    return bool(letters) and letters == letters.upper() and len(letters) >= 3
+    return (stripped, None) if bool(letters) and letters == letters.upper() and len(letters) >= 3 else None
+
+
+def _is_heading(value: str) -> bool:
+    """Compatibility predicate used by older callers and tests."""
+
+    return _heading_details(value) is not None
 
 
 def segment_contract_text(text: str, *, source_method: SourceMethod = "NATIVE") -> list[ContractSection]:
@@ -158,18 +185,19 @@ def segment_contract_text(text: str, *, source_method: SourceMethod = "NATIVE") 
     if not source:
         raise ContractExtractionError("Document version has no extracted text")
     lines = source.splitlines(keepends=True)
-    starts: list[tuple[int, str | None]] = []
+    starts: list[tuple[int, str | None, str | None]] = []
     offset = 0
     for line in lines:
-        clean = line.strip()
-        if _is_heading(clean):
-            starts.append((offset, clean))
+        details = _heading_details(line)
+        if details is not None:
+            heading, article_number = details
+            starts.append((offset, heading, article_number))
         offset += len(line)
     sections: list[ContractSection] = []
     if starts:
         if starts[0][0] > 0 and source[: starts[0][0]].strip():
-            starts.insert(0, (0, None))
-        for index, (start, heading) in enumerate(starts):
+            starts.insert(0, (0, None, None))
+        for index, (start, heading, article_number) in enumerate(starts):
             end = starts[index + 1][0] if index + 1 < len(starts) else len(source)
             raw = source[start:end].strip()
             if raw:
@@ -179,10 +207,11 @@ def segment_contract_text(text: str, *, source_method: SourceMethod = "NATIVE") 
                     ContractSection(
                         section_id=f"section-{len(sections) + 1}",
                         heading=heading,
+                        article_number=article_number,
                         raw_text=raw,
                         normalized_text=normalize_for_match(raw),
                         page_start=_page_for_offset(source, actual_start),
-                        page_end=_page_for_offset(source, max(actual_start, actual_end - 1)),
+                        page_end=_page_for_offset(source, _section_content_end(source, actual_start, actual_end)),
                         start_offset=actual_start,
                         end_offset=actual_end,
                         source_method=source_method,
@@ -198,6 +227,7 @@ def segment_contract_text(text: str, *, source_method: SourceMethod = "NATIVE") 
                 ContractSection(
                     section_id=f"section-{len(sections) + 1}",
                     heading=None,
+                    article_number=None,
                     raw_text=paragraph,
                     normalized_text=normalize_for_match(paragraph),
                     page_start=_page_for_offset(source, start),
@@ -252,36 +282,35 @@ def verify_evidence_claim(
     )
 
 
-def extract_parties(sections: list[ContractSection]) -> list[str]:
-    """Extract bounded legal-name/role pairs from the opening sections only."""
-
-    preamble = "\n".join(section.raw_text for section in sections[:2])[:4000]
-    matches = re.finditer(
-        r"\b([A-Z][A-Za-z0-9& .'-]{1,90}?\s+(?:SAS|SARL|SA|SASU|EURL|LTD|INC))\b(?:\s*,?\s*(?:ci-apr[eè]s|hereinafter)\s+(?:le|la)?\s*([A-Za-zÀ-ÖØ-öø-ÿ -]{3,40}))?",
-        preamble,
-        flags=re.IGNORECASE,
-    )
-    values: list[str] = []
-    for match in matches:
-        name = re.sub(r"^(?:entre|et)\s+", "", " ".join(match.group(1).split()), flags=re.IGNORECASE)
-        role = " ".join((match.group(2) or "").split(".")[0].split())
-        rendered = f"{name} - {role}" if role else name
-        if rendered not in values:
-            values.append(rendered)
-    return values[:6]
-
-
 def extract_party_details(sections: list[ContractSection]) -> list[ContractParty]:
-    """Extract legal-name/role pairs and retain their preamble source text."""
+    """Extract only legal-name candidates with an explicit contractual role."""
 
     values: list[ContractParty] = []
-    for section in sections[:2]:
-        for match in re.finditer(r"\b([A-Z][A-Za-z0-9& .'-]{1,90}?\s+(?:SAS|SARL|SA|SASU|EURL|LTD|INC))\b(?:\s*,?\s*(?:ci-apr\S*|hereinafter)\s+(?:le|la)?\s*([A-Za-z -]{3,40}))?", section.raw_text[:4000], flags=re.IGNORECASE):
-            name = re.sub(r"^(?:entre|et)\s+", "", " ".join(match.group(1).split()), flags=re.IGNORECASE)
-            role = " ".join((match.group(2) or "").split(".")[0].split()) or None
+    preamble_sections = [section for section in sections if section.article_number is None][:2]
+    legal_entity = re.compile(r"\b(?P<name>[A-Z][A-Za-z0-9& .'-]{1,90}?\s+(?:SAS|SARL|SA|SASU|EURL|LTD|INC))\b")
+    roles = "Prestataire|Client|Fournisseur|Sous-traitant|Responsable du traitement|Titulaire"
+    role_pattern = re.compile(
+        rf"\b(?:ci-apr(?:es|ès)|hereinafter)(?:\s+(?:denomm(?:e|é)e?|design(?:e|é)e?))?\s+(?:le|la)\s+(?P<role>{roles})\b",
+        flags=re.IGNORECASE,
+    )
+    role_labels = {
+        "prestataire": "Prestataire", "client": "Client", "fournisseur": "Fournisseur",
+        "sous-traitant": "Sous-traitant", "responsable du traitement": "Responsable du traitement", "titulaire": "Titulaire",
+    }
+    for section in preamble_sections:
+        for match in legal_entity.finditer(section.raw_text[:4000]):
+            tail = section.raw_text[match.end():match.end() + 180]
+            role_match = role_pattern.search(tail)
+            if role_match is None:
+                continue
+            name = re.sub(r"^(?:entre|et)\s+", "", " ".join(match.group("name").split()), flags=re.IGNORECASE)
+            role = role_labels.get(role_match.group("role").casefold())
+            if role is None:
+                continue
             if any(item.name.casefold() == name.casefold() for item in values):
                 continue
-            values.append(ContractParty(name=name, role=role, source_section_id=section.section_id, source_quote=match.group(0).strip(), page_number=section.page_start))
+            quote_end = match.end() + role_match.end()
+            values.append(ContractParty(name=name, role=role, source_section_id=section.section_id, source_quote=section.raw_text[match.start():quote_end].strip(), page_number=section.page_start))
     return values[:6]
 
 
@@ -311,7 +340,7 @@ class ContractAnalyzer:
                 title=section.heading or f"Section {index}",
                 status="OTHER",
                 source_text=section.raw_text,
-                source_location=f"Pages {section.page_start}-{section.page_end}",
+                source_location=f"{section.heading or section.section_id} — pages {section.page_start}-{section.page_end}",
                 evidence=[
                     ContractEvidence(
                         document_version_id=document_version_id,

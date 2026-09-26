@@ -28,7 +28,7 @@ class ContractAgent(Agent):
 
     async def run(self, request: AgentRequest) -> AgentResult:
         analysis = request.authorized_context.contract_analysis
-        if analysis is None or analysis.status != "completed":
+        if analysis is None or analysis.status not in {"completed", "partial"}:
             return self._result(
                 request,
                 "Ouvrez une analyse contractuelle terminée pour poser une question sur un contrat précis.",
@@ -36,6 +36,11 @@ class ContractAgent(Agent):
                 error_code="contract_analysis_unavailable",
             )
         question = _normal(request.question)
+        if analysis.status == "partial" and any(term in question for term in ("entre clauses", "coherence globale", "incoherence entre")):
+            return self._result(
+                request,
+                "Les constats de sections verifies sont disponibles, mais la verification de coherence globale entre les clauses n'est pas terminee. Je ne peux pas en deduire une incoherence inter-clauses.",
+            )
         if self._asks_legality(question):
             return self._legality_boundary(request)
         if "rgpd" in question or "conforme" in question or "respecte" in question:
@@ -51,6 +56,8 @@ class ContractAgent(Agent):
             return self._penalty_answer(request)
         if "resiliation" in question or "résiliation" in request.question.casefold() or "mettre fin" in question:
             return self._clause_answer(request, "termination", absent="Je n'ai pas identifié de clause de résiliation dans le document analysé.")
+        if "duree" in question or "durée" in request.question.casefold() or "expiration" in question:
+            return self._duration_answer(request)
         if any(term in question for term in ("propriete intellectuelle", "propriété intellectuelle", "droits d auteur")):
             return self._clause_answer(request, "intellectual_property", absent="Je n'ai pas identifié de clause de propriété intellectuelle dans le document analysé.")
         if "responsabilite" in question or "responsabilité" in request.question.casefold():
@@ -100,6 +107,24 @@ class ContractAgent(Agent):
             return self._result(request, absent)
         return self._explain_clause(request, clause)
 
+    def _duration_answer(self, request: AgentRequest) -> AgentResult:
+        clauses = request.authorized_context.contract_analysis.clauses
+        contradiction = next(
+            (
+                item for item in clauses
+                if item.clause_type == "term" and item.status == "CONTRADICTORY"
+                and item.verification_status == "VERIFIED"
+            ),
+            None,
+        )
+        if contradiction is not None:
+            return self._explain_clause(request, contradiction)
+        return self._clause_answer(
+            request,
+            "term",
+            absent="Je n'ai pas identifié de disposition précise sur la durée dans le document analysé.",
+        )
+
     def _explain_clause(self, request: AgentRequest, clause) -> AgentResult:
         parts = [clause.plain_language_summary]
         if clause.issues:
@@ -110,9 +135,9 @@ class ContractAgent(Agent):
             parts.append("Revue recommandée : " + clause.recommendation)
         if clause.suggested_revision:
             parts.append(clause.suggested_revision)
-        quote = clause.evidence_quotes[0] if clause.evidence_quotes else clause.source_text[:1200]
-        if quote:
-            parts.append("Preuve du contrat : « " + quote + " »")
+        quotes = clause.evidence_quotes[:2] if clause.evidence_quotes else ([clause.source_text[:1200]] if clause.source_text else [])
+        if quotes:
+            parts.append("Preuve du contrat : " + " ; ".join("« " + quote + " »" for quote in quotes))
         return self._result(request, "\n\n".join(parts))
 
     @staticmethod

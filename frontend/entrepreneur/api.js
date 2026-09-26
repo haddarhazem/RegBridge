@@ -62,6 +62,7 @@
     downloadDocumentVersion: (documentId, versionId) => window.RegBridgeAuthRuntime.download(`/documents/${documentId}/versions/${versionId}/download`),
     documentAnalyses: (documentId) => request(`/documents/${documentId}/analyses`),
     analyzeContract: (documentId, versionId) => request(`/documents/${documentId}/versions/${versionId}/analyses`, { method: 'POST' }),
+    retryContractConsistency: (analysisId) => request(`/contract-analyses/${analysisId}/consistency/retry`, { method: 'POST' }),
     members: (projectId) => request(`/projects/${projectId}/members`),
     inviteMember: (projectId, data) => request(`/projects/${projectId}/members`, json('POST', data)),
     updateMember: (projectId, userId, role) => request(`/projects/${projectId}/members/${userId}`, json('PATCH', { member_role: role })),

@@ -27,6 +27,17 @@ EXTRACTION_JOB_TYPE = "extract_text"
 PENDING_STATES = {"queued"}
 
 
+def _retain_native_partial(result: ExtractionResult, error: ExtractionError) -> ExtractionResult:
+    """Keep usable native pages when optional OCR cannot enrich the remainder."""
+    emit_event(
+        "document.extraction.ocr_fallback",
+        component="document_extraction",
+        error_category=error.category,
+        status="native_partial",
+    )
+    return replace(result, method="native_partial")
+
+
 class DocumentExtractionWorker:
     """Claim and process one immutable version at a time."""
 
@@ -128,19 +139,26 @@ class DocumentExtractionWorker:
                             # incomplete page coverage explicit to later analysis.
                             result = replace(result, method="native_partial")
                         else:
-                            provider = self.ocr_provider or get_ocr_provider()
-                            ocr_result = await provider.extract(payload, version.original_filename, validated.mime_type)
-                            if len(ocr_result.pages) != len(result.pages):
-                                raise ExtractionError("OCR_INVALID_RESPONSE", "OCR page count did not match the source PDF")
-                            pages = tuple(
-                                ocr_result.pages[index - 1] if index in result.ocr_required_pages else result.pages[index - 1]
-                                for index in range(1, len(result.pages) + 1)
-                            )
-                            methods = tuple("OCR" if index in result.ocr_required_pages else "NATIVE" for index in range(1, len(pages) + 1))
-                            result = ExtractionResult(
-                                page_text(pages), pages, "hybrid_native_ocr", "native-pdf-mistral-ocr-v1",
-                                ocr_result.provider, ocr_result.model, methods,
-                            )
+                            try:
+                                provider = self.ocr_provider or get_ocr_provider()
+                                ocr_result = await provider.extract(payload, version.original_filename, validated.mime_type)
+                                if len(ocr_result.pages) != len(result.pages):
+                                    raise ExtractionError("OCR_INVALID_RESPONSE", "OCR page count did not match the source PDF")
+                                pages = tuple(
+                                    ocr_result.pages[index - 1] if index in result.ocr_required_pages else result.pages[index - 1]
+                                    for index in range(1, len(result.pages) + 1)
+                                )
+                                methods = tuple("OCR" if index in result.ocr_required_pages else "NATIVE" for index in range(1, len(pages) + 1))
+                                result = ExtractionResult(
+                                    page_text(pages), pages, "hybrid_native_ocr", "native-pdf-mistral-ocr-v1",
+                                    ocr_result.provider, ocr_result.model, methods,
+                                )
+                            except ExtractionError as exc:
+                                # OCR enriches pages that are not natively readable; it
+                                # must not make the readable native pages unavailable.
+                                # The retained OCR_REQUIRED page markers keep the
+                                # incomplete coverage explicit to downstream analysis.
+                                result = _retain_native_partial(result, exc)
                 except ExtractionError as exc:
                     if exc.category != "OCR_REQUIRED":
                         raise
