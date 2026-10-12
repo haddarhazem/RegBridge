@@ -24,17 +24,18 @@ body.auth-page {
 
 .auth-page .skip-link {
   position: fixed;
-  top: 12px;
+  top: 0;
   left: 12px;
   z-index: 9999;
   padding: 10px 14px;
   background: var(--paper);
   color: var(--carbon);
-  transform: translateY(-200%);
+  transform: translateY(-110%);
+  clip-path: inset(100%);
   transition: transform 160ms ease;
 }
 
-.auth-page .skip-link:focus-visible { transform: translateY(0); }
+.auth-page .skip-link:focus-visible { clip-path:none; transform: translateY(0); }
 
 .auth-header {
   position: relative;
@@ -574,3 +575,13 @@ body.auth-page {
   .auth-mode-transition { transform: none; }
   .auth-page .skip-link { transition: none; }
 }
+
+/* V1.3 authentication is intentionally calm: a single centred decision,
+   not a second product dashboard. */
+body.auth-page { background:#000; color:#f5f5f3; }
+.auth-page .global-background { display:none; }
+.auth-header { height:72px; padding-inline:clamp(20px,4vw,56px); border-color:#292929; background:#000; }.auth-header nav a,.auth-header nav button { color:#b5b5b1; }.auth-header nav a:last-child,.auth-header nav button { color:#f5f5f3; }.auth-header nav span { color:#a8a8a4; }
+.auth-layout { display:grid; grid-template-columns:minmax(0,560px); grid-template-rows:auto auto; justify-content:center; align-content:center; gap:26px; min-height:calc(100dvh - 72px); padding:54px 24px; }.auth-visual { min-height:0; padding:0; border:0; background:none; overflow:visible; text-align:center; }.auth-visual::before,.auth-network { display:none; }.auth-visual-copy { width:auto; margin:auto; }.auth-eyebrow { color:#7a7a76; }.auth-visual-copy h2 { max-width:18ch; margin:0 auto 10px; font-size:clamp(1.65rem,3vw,2.25rem); line-height:1.04; letter-spacing:-.05em; }.auth-visual-copy > p:last-child { max-width:48ch; margin:auto; color:#a8a8a4; font-size:.95rem; }
+.auth-panel { min-height:0; padding:clamp(28px,4vw,46px); border:1px solid #2c2c2c; border-radius:16px; background:#111; }.auth-panel-inner { width:min(100%,440px); }.auth-panel-signal { display:none; }.auth-title { max-width:13ch; margin-bottom:18px; font-size:clamp(2.55rem,5vw,4.25rem); line-height:.96; }.auth-description { color:#b5b5b1; }.auth-submit { border-color:#f5f5f3; background:#f5f5f3; color:#090909; }.auth-submit:hover { border-color:#d7d7d4; background:#d7d7d4; }.auth-state { color:#a8a8a4; }.auth-note { color:#73736f; }.auth-trust { border-color:#2c2c2c; }.auth-trust span { color:#a8a8a4; }.auth-trust b { color:#f5f5f3; }.auth-session-actions { border-color:#2c2c2c; }.auth-utility { color:#f5f5f3; }
+.role-option { border-color:#363636; background:#171717; color:#d7d7d4; }.role-option:hover { border-color:#f5f5f3; }.role-option[data-selected="true"] { border-color:#f5f5f3; background:#f5f5f3; color:#090909; }.role-option small { color:#969692; }.role-option[data-selected="true"] small { color:#454545; }
+@media (max-width:760px) { .auth-header { height:64px; }.auth-layout { min-height:calc(100dvh - 64px); padding:34px 18px 42px; gap:22px; }.auth-visual { height:auto; min-height:0; padding:0; }.auth-visual-copy { width:auto; }.auth-visual-copy h2 { font-size:1.55rem; }.auth-visual-copy > p:last-child { display:block; font-size:.86rem; }.auth-panel { padding:28px 22px; }.auth-title { font-size:clamp(2.4rem,12vw,3.5rem); }.auth-mobile-switch { display:block; }.auth-trust { grid-template-columns:1fr; } }

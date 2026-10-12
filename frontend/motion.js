@@ -3,6 +3,7 @@
 class MotionProvider {
   constructor() {
     this.reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.story = document.querySelector('[data-story]');
     this.target = 0;
     this.progress = 0;
     this.listeners = new Set();
@@ -22,6 +23,11 @@ class MotionProvider {
   }
 
   read() {
+    if (this.story) {
+      const start = this.story.offsetTop;
+      const travel = Math.max(this.story.offsetHeight - window.innerHeight, 1);
+      return Math.min(1, Math.max(0, (window.scrollY - start) / travel));
+    }
     const max = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
     return Math.min(1, Math.max(0, window.scrollY / max));
   }
@@ -33,7 +39,7 @@ class MotionProvider {
   }
 
   update() {
-    this.progress = this.reduced ? this.target : this.progress + (this.target - this.progress) * 0.18;
+    this.progress = this.reduced ? this.target : this.progress + (this.target - this.progress) * 0.24;
     if (Math.abs(this.target - this.progress) < 0.0008) this.progress = this.target;
     this.listeners.forEach((listener) => listener(this.progress, this.target));
     if (!this.reduced && this.progress !== this.target) {

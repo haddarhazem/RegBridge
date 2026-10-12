@@ -12,7 +12,7 @@ class DevelopmentStaticNoStoreMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if request.method == "GET" and response.status_code < 400 and (
             path.startswith(("/entrepreneur/", "/auth/"))
-            or path in {"/", "/styles.css"}
+            or path in {"/", "/styles.css", "/main.js", "/motion.js"}
         ):
             response.headers["Cache-Control"] = "no-store"
         return response

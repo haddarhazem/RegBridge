@@ -29,6 +29,9 @@
         <button class="icon-button sidebar-close" type="button" data-close-sidebar aria-label="Fermer le menu">×</button>
       </div>
       <div class="project-switcher" data-project-switcher></div>
+      <button class="sidebar-collapse-control" type="button" data-collapse-sidebar aria-label="Masquer le panneau latéral">
+        <span>Masquer le panneau</span><span aria-hidden="true">←</span>
+      </button>
       <nav class="sidebar-nav" data-sidebar-nav aria-label="Sections du projet"></nav>
       <div class="sidebar-foot">
         <a class="project-progress" href="#" data-nav-view="roadmap" data-progress-card></a>
@@ -67,14 +70,18 @@
       </header>
       <div class="copilot-content">
         <section class="copilot-context" aria-label="Contexte actif">
-          <p class="eyebrow">CONTEXTE ACTIF</p>
-          <strong class="copilot-project" data-copilot-project>Aucun projet actif</strong>
-          <small data-copilot-project-type></small>
+          <div class="copilot-context-head">
+            <div>
+              <p class="eyebrow">CONTEXTE ACTIF</p>
+              <strong class="copilot-project" data-copilot-project>Aucun projet actif</strong>
+              <small data-copilot-project-type></small>
+            </div>
+            <span class="copilot-context-status">AUTORISÉ</span>
+          </div>
           <details><summary data-copilot-context-count>Informations confirmées</summary><dl data-copilot-context-details></dl></details>
-          <p>Le Copilote utilise uniquement les informations auxquelles vous avez accès.</p>
+          <p class="sr-only">Le Copilote utilise uniquement les informations auxquelles vous avez accès.</p>
         </section>
         <div class="copilot-notice" data-copilot-notice role="status" hidden></div>
-        <div class="copilot-quick-actions" data-copilot-quick-actions aria-label="Questions suggérées"></div>
         <div class="copilot-messages" data-copilot-messages aria-live="polite"></div>
         <section class="copilot-history" data-copilot-history aria-label="Historique des conversations du projet" hidden></section>
         <div class="copilot-error" data-copilot-error role="alert" hidden></div>
@@ -85,6 +92,7 @@
           <button type="button" data-cancel-copilot>Arrêter</button>
         </div>
         <details class="copilot-diagnostics" data-copilot-diagnostics hidden><summary>Diagnostic</summary><dl data-copilot-diagnostics-content></dl></details>
+        <div class="copilot-quick-actions" data-copilot-quick-actions aria-label="Questions suggérées"></div>
         <form class="copilot-form" data-copilot-form>
           <label class="sr-only" for="copilot-question">Posez une question sur votre projet</label>
           <textarea id="copilot-question" name="content" rows="3" maxlength="4000" placeholder="Posez une question sur votre projet…" required></textarea>

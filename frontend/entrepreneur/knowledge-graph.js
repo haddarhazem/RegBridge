@@ -59,19 +59,20 @@
       return { x: box.width / 2 + rotated.x * scale, y: box.height / 2 + rotated.y * scale, z: rotated.z };
     }
     function nodeVisible(node) { return visible.has(node.type); }
+    function detailItem(label, value) { return `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`; }
     function showNode(node) {
       active = node.id;
       const provenance = node.provenance || {};
       const propertyLabels = { project_type: 'Type de projet', country_code: 'Pays', document_type: 'Type de document', classification: 'Classification', visibility: 'Visibilité', knowledge_kind: 'Représentation' };
-      const properties = Object.entries(node.properties || {}).filter(([key]) => !['normalized_key', 'canonical_value'].includes(key)).map(([key, value]) => `<dt>${esc(propertyLabels[key] || key)}</dt><dd>${esc(VALUE_LABELS[value] || value)}</dd>`).join('');
+      const properties = Object.entries(node.properties || {}).filter(([key]) => !['normalized_key', 'canonical_value'].includes(key)).map(([key, value]) => detailItem(propertyLabels[key] || key, VALUE_LABELS[value] || value)).join('');
       const related = graph.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
-      details.innerHTML = `<strong>${esc(node.label)}</strong><dl><dt>Type</dt><dd>${esc(TYPE_LABELS[node.type] || node.type)}</dd><dt>Statut</dt><dd>${esc(STATUS_LABELS[node.trust_status] || node.trust_status)}</dd><dt>Source</dt><dd>${esc(provenance.source_type || 'Information confirmée')}</dd><dt>Champ</dt><dd>${esc(provenance.source_field || '—')}</dd><dt>Relations</dt><dd>${related}</dd>${properties}</dl>`;
+      details.innerHTML = `<strong>${esc(node.label)}</strong><dl>${detailItem('Type', TYPE_LABELS[node.type] || node.type)}${detailItem('Statut', STATUS_LABELS[node.trust_status] || node.trust_status)}${detailItem('Source', provenance.source_type || 'Information confirmée')}${detailItem('Champ', provenance.source_field || '—')}${detailItem('Relations', related)}${properties}</dl>`;
       draw();
     }
     function showEdge(edge) {
       active = edge.id;
       const source = graph.nodes.find((node) => node.id === edge.source); const target = graph.nodes.find((node) => node.id === edge.target);
-      details.innerHTML = `<strong>${esc(RELATION_LABELS[edge.relation] || edge.relation)}</strong><dl><dt>Relation</dt><dd>${esc(source?.label || 'Projet')} → ${esc(target?.label || 'Contexte')}</dd><dt>Statut</dt><dd>${esc(STATUS_LABELS[edge.trust_status] || edge.trust_status)}</dd><dt>Source</dt><dd>${esc(edge.provenance?.source_type || 'Information confirmée')}</dd><dt>Champ</dt><dd>${esc(edge.provenance?.source_field || '—')}</dd></dl>`;
+      details.innerHTML = `<strong>${esc(RELATION_LABELS[edge.relation] || edge.relation)}</strong><dl>${detailItem('Relation', `${source?.label || 'Projet'} → ${target?.label || 'Contexte'}`)}${detailItem('Statut', STATUS_LABELS[edge.trust_status] || edge.trust_status)}${detailItem('Source', edge.provenance?.source_type || 'Information confirmée')}${detailItem('Champ', edge.provenance?.source_field || '—')}</dl>`;
       draw();
     }
     function renderRelations() {
@@ -82,21 +83,21 @@
     }
     function draw() {
       const box = canvas.getBoundingClientRect(); context.clearRect(0, 0, box.width, box.height);
-      context.fillStyle = '#f8f8f8'; context.fillRect(0, 0, box.width, box.height);
+      context.fillStyle = '#0b0b0b'; context.fillRect(0, 0, box.width, box.height);
       const nodes = graph.nodes.filter(nodeVisible).map((node) => ({ node, point: projected(node) })).sort((a, b) => a.point.z - b.point.z);
       const byId = new Map(nodes.map((item) => [item.node.id, item]));
       context.lineWidth = 1;
       graph.edges.forEach((edge) => {
         const a = byId.get(edge.source); const b = byId.get(edge.target); if (!a || !b) return;
-        context.strokeStyle = active === edge.id ? '#050505' : '#b8b8b8'; context.beginPath(); context.moveTo(a.point.x, a.point.y); context.lineTo(b.point.x, b.point.y); context.stroke();
+        context.strokeStyle = active === edge.id ? '#ffffff' : '#4a4a4a'; context.beginPath(); context.moveTo(a.point.x, a.point.y); context.lineTo(b.point.x, b.point.y); context.stroke();
       });
       nodes.forEach(({ node, point }) => {
         const radius = node.type === 'PROJECT' ? 15 : Math.max(7, 11 + point.z * 3);
-        context.fillStyle = node.type === 'PROJECT' ? '#050505' : '#fff'; context.strokeStyle = '#050505'; context.lineWidth = active === node.id ? 3 : 1;
+        context.fillStyle = node.type === 'PROJECT' ? '#f5f5f3' : '#161616'; context.strokeStyle = active === node.id ? '#ffffff' : '#aaa'; context.lineWidth = active === node.id ? 3 : 1;
         context.beginPath(); context.arc(point.x, point.y, radius, 0, Math.PI * 2); context.fill(); context.stroke();
-        context.fillStyle = node.type === 'PROJECT' ? '#fff' : '#050505'; context.font = `${node.type === 'PROJECT' ? '700' : '600'} 11px Space Grotesk, sans-serif`; context.textAlign = 'center'; context.fillText(node.type === 'PROJECT' ? 'RB' : (TYPE_LABELS[node.type] || node.type).slice(0, 3), point.x, point.y + 4);
+        context.fillStyle = node.type === 'PROJECT' ? '#090909' : '#f5f5f3'; context.font = `${node.type === 'PROJECT' ? '700' : '600'} 11px Space Grotesk, sans-serif`; context.textAlign = 'center'; context.fillText(node.type === 'PROJECT' ? 'RB' : (TYPE_LABELS[node.type] || node.type).slice(0, 3), point.x, point.y + 4);
         const compactLabel = node.label.length > 22 ? `${node.label.slice(0, 21)}…` : node.label;
-        context.fillStyle = '#050505'; context.font = '600 12px Space Grotesk, sans-serif'; context.fillText(compactLabel, point.x, point.y + radius + 17);
+        context.fillStyle = '#e5e5e1'; context.font = '600 12px Space Grotesk, sans-serif'; context.fillText(compactLabel, point.x, point.y + radius + 17);
       });
     }
     canvas.addEventListener('pointerdown', (event) => { dragging = true; last = { x: event.clientX, y: event.clientY }; canvas.setPointerCapture(event.pointerId); });

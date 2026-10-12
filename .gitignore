@@ -20,3 +20,6 @@ artifacts/experiments/*
 artifacts/browser-e2e/*
 !artifacts/browser-e2e/.gitkeep
 *.local-results.json
+
+# Generated final codebase audit package for the academic report.
+docs/final-report/

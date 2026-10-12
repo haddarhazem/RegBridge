@@ -34,6 +34,20 @@ async def test_investor_owner_list_alias_routes_are_served() -> None:
     assert briefs.status_code == 200 and "view=briefs" in briefs.text
 
 
+@pytest.mark.asyncio
+async def test_static_investor_matching_demo_is_served() -> None:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/investor/matching-demo/")
+
+    assert response.status_code == 200
+    html = response.text
+    assert "THÈSE SÉLECTIONNÉE" in html
+    assert "EnerSight" in html
+    assert "Critères explicatifs" in html
+    assert "Données synthétiques de démonstration" in html
+    assert "recommandation d’investissement" in html
+
+
 def test_investor_frontend_uses_real_contracts_and_central_auth_client() -> None:
     api = (INVESTOR / "api.js").read_text(encoding="utf-8")
     script = (INVESTOR / "app.js").read_text(encoding="utf-8")

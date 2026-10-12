@@ -119,7 +119,7 @@ def test_entrepreneur_navigation_is_role_and_lifecycle_aware() -> None:
     assert "state.user.roles.includes('entrepreneur')" in app_script
     assert "/auth/login/?returnTo=" in app_script
     assert "state.project.project_type !== 'idea'" in app_script
-    assert "['compliance', 'Conformité']" in app_script
+    assert "['compliance', 'Conformité', '✓']" in app_script
     assert "Investisseurs" not in app_script
     assert "Veille réglementaire" not in app_script
     assert "'/entrepreneur/'" in auth_runtime
@@ -321,3 +321,74 @@ def test_formdata_upload_does_not_force_json_content_type() -> None:
 
     assert "!(options.body instanceof FormData)" in runtime
     assert "apiRequest," in runtime
+
+
+def test_document_summary_uses_readable_responsive_metric_cards() -> None:
+    css = (ENTREPRENEUR / "entrepreneur.css").read_text(encoding="utf-8")
+    views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
+
+    assert 'class="document-summary"' in views
+    assert ".document-summary {" in css
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
+    assert "min-height:118px" in css
+    assert ".document-summary { grid-template-columns:1fr; }" in css
+
+def test_selected_document_detail_has_structured_metadata_and_history_layout() -> None:
+    css = (ENTREPRENEUR / "entrepreneur.css").read_text(encoding="utf-8")
+    views = (ENTREPRENEUR / "views.js").read_text(encoding="utf-8")
+
+    assert 'class="surface document-detail"' in views
+    assert 'class="document-facts"' in views
+    assert 'class="version-history"' in views
+    assert ".document-detail-head {" in css
+    assert "grid-template-columns:repeat(6,minmax(0,1fr))" in css
+    assert ".version-row.active" in css
+    assert "@media (max-width:700px)" in css
+
+def test_knowledge_graph_selected_provenance_uses_readable_dark_metadata_cards() -> None:
+    css = (ENTREPRENEUR / "entrepreneur.css").read_text(encoding="utf-8")
+    graph = (ENTREPRENEUR / "knowledge-graph.js").read_text(encoding="utf-8")
+
+    assert "function detailItem(label, value)" in graph
+    assert "<dl>${detailItem('Type'" in graph
+    assert "context.fillStyle = '#0b0b0b'" in graph
+    assert ".knowledge-graph {" in css
+    assert ".graph-details dl > div" in css
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
+    assert "background:var(--rb-raised)" in css
+
+def test_copilot_context_and_sidebar_controls_remain_readable_at_narrow_widths() -> None:
+    html = (ENTREPRENEUR / "index.html").read_text(encoding="utf-8")
+    app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
+    css = (ENTREPRENEUR / "entrepreneur.css").read_text(encoding="utf-8")
+
+    assert 'data-collapse-sidebar' in html
+    assert 'aria-label="Masquer le panneau latéral"' in html
+    assert 'class="copilot-context-head"' in html
+    assert 'class="copilot-context-status"' in html
+    assert html.index("data-copilot-messages") < html.index("data-copilot-quick-actions") < html.index("data-copilot-form")
+    assert "function collapseSidebar()" in app_script
+    assert "classList.add('sidebar-collapsed')" in app_script
+    assert "classList.remove('sidebar-collapsed')" in app_script
+    assert "(max-width: 960px)" in app_script
+    assert "informations déclarées confirmées" not in app_script
+    assert "conversationMessages.length === 0" in app_script
+    assert "quick.hidden = suggestions.length === 0" in app_script
+    assert ".sidebar-collapsed .app-sidebar" in css
+    assert ".sidebar-collapse-control" in css
+    assert ".copilot-context-head" in css
+    assert "grid-template-columns: repeat(auto-fit" in css
+    assert "white-space: normal" in css
+    assert "flex:1 1 280px" in css
+    assert ".copilot-context details[open]" in css
+    assert "@media (max-width:960px)" in css
+
+
+def test_copilot_progress_retries_transient_trace_gap_without_false_failure_notice() -> None:
+    app_script = (ENTREPRENEUR / "app.js").read_text(encoding="utf-8")
+
+    assert "Le suivi de progression est momentanément indisponible." not in app_script
+    assert "copilot.pollAttempts < 20" not in app_script
+    assert "const retryDelay = Math.min(900 + (copilot.pollAttempts * 250), 3000)" in app_script
+    assert "if (ownsCopilot(copilot, controller) && copilot.loading)" in app_script
+    assert "copilot.notice = '';" in app_script

@@ -204,7 +204,7 @@
     document.body.classList.toggle('copilot-open', copilot.visible);
     document.body.classList.toggle('copilot-fullscreen', copilot.mode === 'fullscreen');
     const drawer = document.querySelector('[data-copilot-drawer]');
-    const modalPresentation = copilot.mode === 'fullscreen' || window.matchMedia('(max-width: 600px)').matches;
+    const modalPresentation = copilot.mode === 'fullscreen' || window.matchMedia('(max-width: 960px)').matches;
     drawer.setAttribute('role', modalPresentation ? 'dialog' : 'complementary');
     if (modalPresentation) drawer.setAttribute('aria-modal', 'true');
     else drawer.removeAttribute('aria-modal');
@@ -233,15 +233,19 @@
     const confirmed = state.project?.confirmed_fields || [];
     const fields = [['activity', 'Activité', 'activity'], ['sector', 'Secteur', 'sector'], ['technology', 'Technologie', 'technology'], ['data', 'Données', 'data'], ['market', 'Marché', 'target_market'], ['location', 'Localisation', 'location']];
     const available = fields.filter(([key, , property]) => confirmed.includes(key) && state.project[property]);
-    document.querySelector('[data-copilot-context-count]').textContent = `${available.length}/6 informations déclarées confirmées`;
+    document.querySelector('[data-copilot-context-count]').textContent = available.length === 1
+      ? '1/6 information confirmée'
+      : `${available.length}/6 informations confirmées`;
     document.querySelector('[data-copilot-context-details]').innerHTML = available.map(([, label, property]) => `<dt>${label}</dt><dd>${views.escape(state.project[property])}</dd>`).join('');
     submit.disabled = state.copilot.loading || !state.project;
-    const suggestions = state.project ? [
+    const conversationMessages = state.copilot.messages.filter((message) => ['user', 'assistant'].includes(message.role));
+    const suggestions = state.project && conversationMessages.length === 0 && !state.copilot.loading ? [
       'Quelles obligations réglementaires principales concernent ce projet ?',
       'Quelles informations réglementaires dois-je encore préciser ?',
       ...(state.assessment ? ['Explique les obligations réglementaires de ce projet.'] : []),
       ...(state.roadmap ? ['Quelles sont mes prochaines étapes ?'] : []),
     ] : [];
+    quick.hidden = suggestions.length === 0;
     quick.innerHTML = suggestions.map((question) => `<button type="button" data-copilot-question="${views.escape(question)}">${views.escape(question)}</button>`).join('');
     const candidateLabel = { technology: 'Technologie', data: 'Données', market: 'Marché', provider: 'Fournisseur / infrastructure' };
     const knowledgeCandidates = (message) => Array.isArray(message?.content_json?.knowledge_candidates) ? message.content_json.knowledge_candidates : [];
@@ -249,8 +253,8 @@
       const removal = candidate.operation === 'REMOVE';
       return `<section class="copilot-knowledge-candidates" aria-label="Informations détectées sur votre projet"><p>INFORMATIONS DÉTECTÉES SUR VOTRE PROJET</p><article class="copilot-knowledge-candidate"><div><strong>${views.escape(candidate.value)}</strong><span>${views.escape(removal ? `Retirer : ${candidateLabel[candidate.domain] || candidate.domain}` : candidateLabel[candidate.domain] || candidate.domain)}</span><small>À confirmer</small></div><div class="copilot-candidate-actions"><button type="button" data-action="confirm-fact" data-fact-id="${views.escape(candidate.id)}">${removal ? 'Confirmer le retrait' : 'Confirmer'}</button><button type="button" data-action="correct-fact" data-from-copilot="true" data-fact-id="${views.escape(candidate.id)}">Corriger</button><button type="button" data-action="reject-fact" data-fact-id="${views.escape(candidate.id)}">Rejeter</button></div></article></section>`;
     }).join('');
-    messages.innerHTML = state.copilot.messages.length
-      ? state.copilot.messages.filter((message) => ['user', 'assistant'].includes(message.role)).map((message) => {
+    messages.innerHTML = conversationMessages.length
+      ? conversationMessages.map((message) => {
         const sources = copilotSources(message);
         const warnings = copilotWarnings(message);
         const references = copilotReferences(message);
@@ -279,17 +283,21 @@
       const status = await api.copilotStatus(conversationId, requestId, controller.signal);
       if (!ownsCopilot(copilot, controller) || copilot.requestId !== requestId) return;
       copilot.status = status;
+      copilot.notice = '';
       copilot.pollAttempts = 0;
       renderCopilot();
       if (['completed', 'failed', 'cancelled'].includes(status.status)) return;
     } catch (error) {
       if (!ownsCopilot(copilot, controller) || controller.signal.aborted) return;
-      // The POST can legitimately reach the backend milliseconds after the first poll.
-      if (error?.status !== 404 || copilot.pollAttempts >= 3) copilot.notice = 'Le suivi de progression est momentanément indisponible.';
+      // The response route builds the configured pipeline before the first
+      // request trace is persisted. A temporary 404 (or transport retry) is
+      // therefore not a Copilot failure: keep the generic loading state and
+      // retry until the parent request completes or its controller is aborted.
       copilot.pollAttempts += 1;
     }
-    if (ownsCopilot(copilot, controller) && copilot.loading && copilot.pollAttempts < 20) {
-      copilot.pollTimer = window.setTimeout(() => pollCopilotStatus(copilot, controller, conversationId, requestId), 900);
+    if (ownsCopilot(copilot, controller) && copilot.loading) {
+      const retryDelay = Math.min(900 + (copilot.pollAttempts * 250), 3000);
+      copilot.pollTimer = window.setTimeout(() => pollCopilotStatus(copilot, controller, conversationId, requestId), retryDelay);
     }
   }
 
@@ -339,6 +347,7 @@
       if (copilot.conversationId === conversationId) {
         copilot.messages = [...copilot.messages.filter((message) => message.id), turn.user_message, turn.assistant_message];
       }
+      copilot.notice = '';
       copilot.unread = !copilot.visible;
     } catch (error) {
       if (!ownsCopilot(copilot, controller)) return;
@@ -449,16 +458,16 @@
   }
 
   function navGroup(title, items) {
-    return `<section><h2>${title}</h2>${items.map(([view, label]) => `<a href="${routeUrl(view)}" data-nav-view="${view}" class="${state.view === view || (view === 'project' && ['facts', 'onboarding'].includes(state.view)) ? 'active' : ''}">${label}</a>`).join('')}</section>`;
+    return `<section><h2>${title}</h2>${items.map(([view, label, mark = '•']) => `<a href="${routeUrl(view)}" data-nav-view="${view}" class="${state.view === view || (view === 'project' && ['facts', 'onboarding'].includes(state.view)) ? 'active' : ''}"><span class="nav-mark" aria-hidden="true">${mark}</span><span>${label}</span></a>`).join('')}</section>`;
   }
 
   function renderShell() {
     renderProjectSwitcher();
     const hasProject = Boolean(state.project);
-    const essential = [['dashboard', 'Tableau de bord'], ...(hasProject ? [['project', 'Mon projet'], ['roadmap', 'Roadmap de lancement'], ['documents', 'Documents']] : [])];
-    const analysis = hasProject ? [['regulatory', 'Réglementation'], ['contracts', 'Contrats'], ...(state.project.project_type !== 'idea' ? [['compliance', 'Conformité']] : [])] : [];
-    const system = [...(hasProject ? [['access', 'Équipe & accès']] : []), ['profile', 'Profil']];
-    nav.innerHTML = navGroup('ESSENTIEL', essential) + (analysis.length ? navGroup('ANALYSE', analysis) : '') + navGroup('SYSTÈME', system);
+    const essential = [['dashboard', 'Vue d’ensemble', '⌂'], ...(hasProject ? [['project', 'Projet', '□'], ['roadmap', 'Roadmap', '→']] : [])];
+    const compliance = hasProject ? [['regulatory', 'Réglementation', '§'], ['documents', 'Documents', '▤'], ['contracts', 'Contrats', '⌘'], ...(state.project.project_type !== 'idea' ? [['compliance', 'Conformité', '✓']] : [])] : [];
+    const system = [...(hasProject ? [['access', 'Équipe et accès', '◌']] : []), ['profile', 'Compte', '○']];
+    nav.innerHTML = navGroup('ESPACE DE TRAVAIL', essential) + (compliance.length ? navGroup('CONFORMITÉ', compliance) : '') + navGroup('COMPTE', system);
     document.querySelector('[data-user-email]').textContent = state.user.email;
     document.querySelector('[data-user-initials]').textContent = state.user.email.slice(0, 2).toUpperCase();
     const copilotButton = document.querySelector('[data-open-copilot]');
@@ -868,8 +877,17 @@
     }, delay);
   }
 
-  function openSidebar() { document.body.classList.add('sidebar-open'); document.querySelector('[data-open-sidebar]').setAttribute('aria-expanded', 'true'); }
+  function openSidebar() {
+    document.body.classList.remove('sidebar-collapsed');
+    document.body.classList.add('sidebar-open');
+    document.querySelector('[data-open-sidebar]').setAttribute('aria-expanded', 'true');
+  }
   function closeSidebar() { document.body.classList.remove('sidebar-open'); document.querySelector('[data-open-sidebar]').setAttribute('aria-expanded', 'false'); }
+  function collapseSidebar() {
+    closeSidebar();
+    document.body.classList.add('sidebar-collapsed');
+    document.querySelector('[data-open-sidebar]').focus();
+  }
   async function openCopilot() {
     if (!state.project) return;
     state.copilot.visible = true;
@@ -937,6 +955,7 @@
   });
   document.querySelector('[data-open-sidebar]').addEventListener('click', openSidebar);
   document.querySelector('[data-close-sidebar]').addEventListener('click', closeSidebar);
+  document.querySelector('[data-collapse-sidebar]').addEventListener('click', collapseSidebar);
   document.querySelector('[data-sidebar-scrim]').addEventListener('click', closeSidebar);
   document.querySelector('[data-open-copilot]').addEventListener('click', openCopilot);
   document.querySelector('[data-close-copilot]').addEventListener('click', closeCopilot);
@@ -957,7 +976,7 @@
     if (thread) loadCopilotHistory(thread.dataset.copilotThread);
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Tab' && state.copilot.visible && (state.copilot.mode === 'fullscreen' || window.matchMedia('(max-width: 600px)').matches)) {
+    if (event.key === 'Tab' && state.copilot.visible && (state.copilot.mode === 'fullscreen' || window.matchMedia('(max-width: 960px)').matches)) {
       const controls = [...document.querySelector('[data-copilot-drawer]').querySelectorAll('button, select, textarea, a[href], summary')].filter((node) => !node.disabled && node.getClientRects().length);
       const first = controls[0], last = controls[controls.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
