@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -46,6 +47,15 @@ class ContractAnalysisService:
         self.semantic_analyzer = semantic_analyzer
         self.settings = settings or get_settings()
         self.policy = DocumentAuthorizationPolicy()
+
+    def _metadata_provider(self) -> Any:
+        """Provider used only for trace metadata; never fails when unconfigured."""
+        if self.provider is not None:
+            return self.provider
+        try:
+            return get_llm_provider()
+        except Exception:
+            return None
 
     def _configured_semantic_analyzer(self) -> ContractSemanticAnalyzer | None:
         if self.semantic_analyzer is not None:
@@ -201,8 +211,8 @@ class ContractAnalysisService:
                     consistency_status=consistency_status,
                     consistency_attempt_count=consistency_attempt_count,
                     consistency_latency_ms=consistency_latency_ms,
-                    provider=getattr(self.provider or get_llm_provider(), "provider_name", None) if semantic is not None else None,
-                    model=getattr(self.provider or get_llm_provider(), "model", None) if semantic is not None else None,
+                    provider=getattr(self._metadata_provider(), "provider_name", None) if semantic is not None else None,
+                    model=getattr(self._metadata_provider(), "model", None) if semantic is not None else None,
                 )
                 persisted.verification_status = output.semantic_status
                 for index, clause in enumerate(output.clauses, 1):
